@@ -8,6 +8,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from backend.app.board_api import router as board_router
+from backend.app.ai_board_api import router as ai_board_router
 from backend.app.database import connect_database, initialize_database
 from backend.app.openrouter_api import router as openrouter_router
 
@@ -32,6 +33,7 @@ def create_app(database: Path | None = None) -> FastAPI:
     app = FastAPI(title="PM MVP Backend", lifespan=lifespan)
     app.state.database_path = selected_database
     app.include_router(board_router)
+    app.include_router(ai_board_router)
     app.include_router(openrouter_router)
 
     def database_connection():

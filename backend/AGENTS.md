@@ -12,6 +12,7 @@ This directory contains the FastAPI backend for the project management MVP. It s
 - `/api/hello` returns a sample JSON response confirming that the API is responding.
 - `app/database.py` creates and seeds the SQLite schema on startup.
 - `app/board_api.py` implements board read, column rename, card create/edit/delete, and card move routes.
+- `app/ai_board_api.py` provides board-aware chat with validated structured card/column mutations applied atomically.
 - `app/openrouter_api.py` makes a minimal OpenRouter chat-completion request for connectivity verification.
 - The SQLite path is configured with `PM_DATABASE_PATH`; by default it is `data/pm.db` at the repository root.
 - `OPENROUTER_API_KEY` is loaded from the repository-root `.env` file when present or from the process environment. It is never returned by an API route.
@@ -44,6 +45,9 @@ Mutation responses return the complete board in the frontend `BoardData` shape.
 - Missing configuration returns HTTP 503; invalid credentials, provider failures, network errors, and malformed responses return HTTP 502 with a safe explanation.
 - The request has a 30-second timeout.
 - Unit/API tests mock the provider. To make a real provider request, set `RUN_OPENROUTER_INTEGRATION=1` and `OPENROUTER_API_KEY`, then run `python -m pytest backend/tests/test_openrouter_integration.py` from the repository root. Do not commit `.env`.
+- `POST /api/users/{user_id}/board/chat` accepts `{"question": "...", "history": [{"role": "user|assistant", "content": "..."}]}`; history is optional.
+- The backend adds the current SQLite board to the model context and returns `{"model": "...", "reply": "...", "board": {...}, "changed": true|false}`.
+- Model `actions` may be empty, or contain `create_card`, `update_card`, `move_card`, and `rename_column` operations. The full action list is validated before being applied in one SQLite transaction; invalid model output or board references do not persist changes.
 
 ## Development conventions
 

@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import Callable
 
 import httpx
@@ -5,6 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from backend.app import openrouter_api
+from backend.app.openrouter_api import request_chat_completion
 
 CONNECTIVITY_URL = "/api/ai/connectivity"
 
@@ -85,6 +87,36 @@ def test_connectivity_uses_configured_model_and_validates_response(
         "messages": [
             {"role": "user", "content": openrouter_api.CONNECTIVITY_PROMPT}
         ],
+    }
+
+
+def test_structured_completion_requests_json_object(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    response = completion_response('{"reply":"Hello","actions":[]}')
+    captured: dict[str, object] = {}
+
+    def capture_request(url: str, kwargs: dict[str, object]) -> None:
+        captured["url"] = url
+        captured.update(kwargs)
+
+    install_mock_client(
+        monkeypatch, response=response, on_post=capture_request
+    )
+    content = asyncio.run(
+        request_chat_completion(
+            "test-key",
+            [{"role": "system", "content": "Return JSON."}],
+            response_format={"type": "json_object"},
+        )
+    )
+
+    assert content == '{"reply":"Hello","actions":[]}'
+    assert captured["url"] == openrouter_api.OPENROUTER_URL
+    assert captured["json"] == {
+        "model": "openai/gpt-oss-120b",
+        "messages": [{"role": "system", "content": "Return JSON."}],
+        "response_format": {"type": "json_object"},
     }
 
 

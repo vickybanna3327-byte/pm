@@ -220,22 +220,28 @@ Success criteria:
 Goal: give the AI access to the Kanban JSON, user message, and conversation context so it can respond with structured output and optional board updates.
 
 Checklist:
-- [ ] Define the AI request payload structure: current board JSON, user question, and conversation history.
-- [ ] Implement structured output parsing for both the assistant reply and optional Kanban mutation.
-- [ ] Support the scenario where the LLM returns a plain answer without changing the board.
-- [ ] Support the scenario where the LLM returns card updates, column changes, or moves.
-- [ ] Validate the response schema and guard against invalid or partial AI output.
-- [ ] Add thorough backend tests for structured output handling.
+- [x] Define the AI request payload structure: user question and optional prior user/assistant messages; the backend injects the current SQLite board.
+- [x] Implement strict structured output parsing for the assistant reply and optional Kanban mutations.
+- [x] Support plain answers without changing the board.
+- [x] Support card creation/updates/moves and column renames.
+- [x] Validate the response schema and apply mutations atomically; invalid or partial output leaves the board unchanged.
+- [x] Add backend tests for request construction, response parsing, board context, mutations, and failure handling.
+
+Implementation decisions:
+- `POST /api/users/{user_id}/board/chat` accepts `{"question": "...", "history": [{"role": "user|assistant", "content": "..."}]}`. History is limited to 20 messages; each message and the question are limited to 4,000 characters.
+- The backend fetches the board from SQLite rather than accepting client-supplied board state, and submits it in the system context with conversation history and the latest question.
+- OpenRouter is asked for a JSON object containing a non-empty `reply` and optional `actions`. Supported actions are `create_card`, `update_card`, `move_card`, and `rename_column`; delete is intentionally not included.
+- Successful responses include the assistant reply, the complete current board, and a `changed` flag. Mutations run in one transaction; invalid references, positions, or malformed model output are rejected without partial updates.
+- Backend tests mock OpenRouter. A live model response remains subject to Part 8's configured-key integration check.
 
 Tests:
-- Unit tests for request payload generation and output parsing.
-- Integration tests for both read-only AI responses and board-change responses.
-- Validation tests for malformed structured output and safety fallbacks.
+- Tests cover prompt construction with board/history, JSON-mode request format, text-only responses, each supported mutation type, invalid client and model payloads, unknown board IDs, and transactional rollback.
+- Tests validate read-only and mutation responses against a temporary SQLite database while mocking external model calls.
 
 Success criteria:
-- The AI can answer user requests using board context.
-- The backend accepts a structured response that includes optional Kanban changes.
-- Invalid AI output is rejected or handled safely without corrupting board state.
+- [x] The backend constructs a request using board context, question, and conversation history.
+- [x] The backend parses responses that include optional Kanban changes.
+- [x] Invalid AI output is rejected without corrupting board state.
 - AI tests prioritize structured-output behavior, error cases, and state integrity; 80% is aspirational when sensible, not a release gate.
 
 ---

@@ -15,15 +15,29 @@ class OpenRouterError(Exception):
 
 
 async def request_completion(api_key: str, prompt: str) -> str:
+    return await request_chat_completion(
+        api_key, [{"role": "user", "content": prompt}]
+    )
+
+
+async def request_chat_completion(
+    api_key: str,
+    messages: list[dict[str, str]],
+    response_format: dict[str, str] | None = None,
+) -> str:
+    request_body: dict[str, object] = {
+        "model": OPENROUTER_MODEL,
+        "messages": messages,
+    }
+    if response_format is not None:
+        request_body["response_format"] = response_format
+
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.post(
                 OPENROUTER_URL,
                 headers={"Authorization": f"Bearer {api_key}"},
-                json={
-                    "model": OPENROUTER_MODEL,
-                    "messages": [{"role": "user", "content": prompt}],
-                },
+                json=request_body,
             )
     except httpx.TimeoutException as error:
         raise OpenRouterError("The OpenRouter request timed out.") from error

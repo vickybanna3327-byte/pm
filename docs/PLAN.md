@@ -5,11 +5,11 @@
 Goal: confirm the project direction, capture the work breakdown, and set explicit definition-of-done criteria before implementing any production code.
 
 Checklist:
-- [ ] Confirm the project requirements from the top-level AGENTS.md and the business requirements documented in this repo.
-- [ ] Review the existing frontend demo and identify what is already implemented versus what must be built for the MVP.
-- [ ] Write a detailed execution plan for each project phase, including subtasks, validation, and acceptance criteria.
-- [ ] Create a frontend AGENTS.md that explains the current frontend architecture, patterns, and testing strategy.
-- [ ] Present the plan to the user for approval before starting implementation.
+- [x] Confirm the project requirements from the top-level AGENTS.md and the business requirements documented in this repo.
+- [x] Review the existing frontend demo and identify what is already implemented versus what must be built for the MVP.
+- [x] Write a detailed execution plan for each project phase, including subtasks, validation, and acceptance criteria.
+- [x] Create a frontend AGENTS.md that explains the current frontend architecture, patterns, and testing strategy.
+- [x] Present the plan to the user for approval before starting implementation.
 
 Testing policy: prioritize valuable tests for expected behavior, important edge cases, and integration boundaries. Aim for 80% coverage when it is sensible, but do not treat the percentage as a release gate or add low-value tests solely to reach it.
 
@@ -29,13 +29,13 @@ Success criteria:
 Goal: stand up the containerized application foundation, create the FastAPI backend, and validate that a basic local app and API are running.
 
 Checklist:
-- [ ] Define the Dockerfile and container layout for the app.
-- [ ] Add required environment configuration for backend/frontend runtime and local secrets.
-- [ ] Create the FastAPI backend package structure in backend/.
-- [ ] Add a minimal health endpoint and a sample API route returning a simple payload.
-- [ ] Add a static HTML/placeholder response at the root path to confirm the app serves successfully.
-- [ ] Create start/stop scripts for Mac, PC, and Linux under scripts/.
-- [ ] Verify the app starts locally and the health/API endpoints respond successfully.
+- [x] Define the Dockerfile and container layout for the app.
+- [x] Add required environment configuration for backend/frontend runtime and local secrets.
+- [x] Create the FastAPI backend package structure in backend/.
+- [x] Add a minimal health endpoint and a sample API route returning a simple payload.
+- [x] Add a static HTML/placeholder response at the root path to confirm the app serves successfully.
+- [x] Create start/stop scripts for Mac, PC, and Linux under scripts/.
+- [x] Verify the app starts locally and the health/API endpoints respond successfully.
 
 Tests:
 - Backend smoke test: ensure the app boots without errors.
@@ -43,9 +43,9 @@ Tests:
 - Static serving smoke test: confirm the container/runner serves a page at /.
 
 Success criteria:
-- The app runs locally via the provided scripts.
-- A simple backend route works and the frontend root responds with an HTML page.
-- Docker and backend scaffolding are ready for the actual MVP features.
+- [x] The app runs locally via the provided scripts.
+- [x] A simple backend route works and the frontend root responds with an HTML page.
+- [x] Docker and backend scaffolding are ready for the actual MVP features.
 
 ---
 
@@ -159,16 +159,27 @@ Checklist:
 - [x] Replace local board state with persisted data fetched from the backend.
 - [x] Ensure drag-and-drop updates are synchronized to the backend, including target ordering.
 - [x] Ensure add-card, delete-card, and rename-column operations persist correctly.
+- [ ] Add UI and API integration for editing an existing card's title/details and persisting the edit.
 - [x] Handle loading, retry, save-progress, and error states.
 - [x] Perform integration testing for the full user flow.
+
+Implementation decisions:
+- SQLite is the source of truth for board data. The frontend keeps the loaded `BoardData` in an external store; it does not use browser storage as a board cache.
+- The MVP frontend calls the fixed `/api/users/user/board` path. The sign-in remains a frontend-only demo gate; the backend routes are not authenticated.
+- Each successful mutation returns the complete board. The frontend serializes mutations and replaces its board state with each response rather than applying optimistic updates.
+- Column/card ordering uses integer positions in SQLite. Dragging over a card inserts at that card's position; dropping on a column appends.
+- Column title edits are submitted on blur after trimming whitespace; blank titles are not submitted.
+- `PM_DATABASE_PATH` selects the SQLite file. In Docker, mount a persistent volume at `/app/data` to retain data across container replacement.
+- Playwright tests use a stateful API mock for deterministic UI journeys. Cross-layer behavior is additionally checked against the real SQLite API in the Docker-served app.
 
 Tests:
 - Frontend unit tests cover API request paths, methods, payloads, response validation, and store error handling.
 - Playwright tests exercise sign-in, board rendering, card creation/deletion/movement, column renaming, and persistence through reload/logout/sign-in using a stateful API mock.
 - Backend API tests cover SQLite persistence and ordered moves; the built Docker app was also exercised live in a browser against its actual SQLite API.
+- Card-editing coverage remains outstanding with the unchecked card-editing requirement above.
 
 Success criteria:
-- [x] The board is fully persistent across refreshes and API interactions.
+- [x] Supported board operations are persistent across refreshes and API interactions.
 - [x] The frontend and backend remain in sync.
 - [x] Test suite covers the main state transitions and failure modes.
 - Tests prioritize critical behavior and failure modes; 80% is an aspirational target when sensible, not a release gate.
@@ -251,7 +262,7 @@ Success criteria:
 ## Definition of done for the project
 
 - The app supports sign-in with the required MVP credentials.
-- The user sees a Kanban board with editable columns and draggable cards.
+- The user sees a Kanban board with editable columns and cards, and draggable cards.
 - Board state is persisted in SQLite and maintained across requests.
 - The backend exposes valid API routes for board operations.
 - OpenRouter connectivity is working with the configured model.

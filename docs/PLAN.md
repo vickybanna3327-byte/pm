@@ -155,22 +155,22 @@ Success criteria:
 Goal: replace local-only demo state with real backend-backed board data and ensure frontend behavior stays consistent across sessions.
 
 Checklist:
-- [ ] Connect the frontend to backend API endpoints for board loading and updates.
-- [ ] Replace local board state with persisted data fetched from the backend.
-- [ ] Ensure drag-and-drop updates are synchronized to the backend.
-- [ ] Ensure add-card, delete-card, and rename-column operations persist correctly.
-- [ ] Handle loading and error states gracefully.
-- [ ] Perform very thorough integration testing for the full user flow.
+- [x] Connect the frontend to backend API endpoints for board loading and updates.
+- [x] Replace local board state with persisted data fetched from the backend.
+- [x] Ensure drag-and-drop updates are synchronized to the backend, including target ordering.
+- [x] Ensure add-card, delete-card, and rename-column operations persist correctly.
+- [x] Handle loading, retry, save-progress, and error states.
+- [x] Perform integration testing for the full user flow.
 
 Tests:
-- Frontend integration tests exercising auth + board rendering + persistence.
-- API contract tests to confirm request/response payloads match the frontend expectations.
-- Regression tests verifying column order and card movement persist correctly.
+- Frontend unit tests cover API request paths, methods, payloads, response validation, and store error handling.
+- Playwright tests exercise sign-in, board rendering, card creation/deletion/movement, column renaming, and persistence through reload/logout/sign-in using a stateful API mock.
+- Backend API tests cover SQLite persistence and ordered moves; the built Docker app was also exercised live in a browser against its actual SQLite API.
 
 Success criteria:
-- The board is fully persistent across refreshes and API interactions.
-- The frontend and backend remain in sync.
-- Test suite covers the main state transitions and failure modes.
+- [x] The board is fully persistent across refreshes and API interactions.
+- [x] The frontend and backend remain in sync.
+- [x] Test suite covers the main state transitions and failure modes.
 - Tests prioritize critical behavior and failure modes; 80% is an aspirational target when sensible, not a release gate.
 
 ---

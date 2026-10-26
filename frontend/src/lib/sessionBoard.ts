@@ -1,37 +1,87 @@
-import { initialData, type BoardData } from "@/lib/kanban";
+import type { BoardData } from "@/lib/kanban";
+import * as boardApi from "@/lib/boardApi";
 
-const BOARD_STORAGE_KEY = "pm-mvp-board";
+export type BoardState = {
+  board: BoardData | null;
+  status: "loading" | "ready" | "error";
+  error: string | null;
+  saving: boolean;
+};
+
 const BOARD_CHANGE_EVENT = "pm-mvp-board-change";
+const EMPTY_STATE: BoardState = {
+  board: null,
+  status: "loading",
+  error: null,
+  saving: false,
+};
 
-let cachedSerializedBoard: string | null | undefined;
-let cachedBoard: BoardData = initialData;
+let state = EMPTY_STATE;
+let mutationQueue: Promise<void> = Promise.resolve();
+
+const notify = () => window.dispatchEvent(new Event(BOARD_CHANGE_EVENT));
+
+const setState = (nextState: BoardState) => {
+  state = nextState;
+  notify();
+};
 
 export const subscribeToBoard = (onChange: () => void) => {
   window.addEventListener(BOARD_CHANGE_EVENT, onChange);
   return () => window.removeEventListener(BOARD_CHANGE_EVENT, onChange);
 };
 
-export const getBoardSnapshot = () => {
-  const serializedBoard = sessionStorage.getItem(BOARD_STORAGE_KEY);
-  if (serializedBoard !== cachedSerializedBoard) {
-    cachedSerializedBoard = serializedBoard;
-    cachedBoard = serializedBoard
-      ? JSON.parse(serializedBoard)
-      : initialData;
+export const getBoardSnapshot = () => state;
+export const getServerBoardSnapshot = () => EMPTY_STATE;
+
+export const loadBoard = async () => {
+  setState({ board: null, status: "loading", error: null, saving: false });
+  try {
+    const board = await boardApi.fetchBoard();
+    setState({ board, status: "ready", error: null, saving: false });
+  } catch (error) {
+    setState({
+      board: null,
+      status: "error",
+      error: error instanceof Error ? error.message : "Unable to load the board.",
+      saving: false,
+    });
   }
-  return cachedBoard;
 };
 
-export const getServerBoardSnapshot = () => initialData;
-
-export const updateSessionBoard = (
-  update: (board: BoardData) => BoardData
-) => {
-  const nextBoard = update(getBoardSnapshot());
-  const serializedBoard = JSON.stringify(nextBoard);
-
-  sessionStorage.setItem(BOARD_STORAGE_KEY, serializedBoard);
-  cachedSerializedBoard = serializedBoard;
-  cachedBoard = nextBoard;
-  window.dispatchEvent(new Event(BOARD_CHANGE_EVENT));
+const saveMutation = (mutation: () => Promise<BoardData>) => {
+  const nextMutation = mutationQueue.then(async () => {
+    setState({ ...state, error: null, saving: true });
+    try {
+      const board = await mutation();
+      setState({ board, status: "ready", error: null, saving: false });
+    } catch (error) {
+      setState({
+        ...state,
+        error:
+          error instanceof Error ? error.message : "Unable to save board changes.",
+        saving: false,
+      });
+    }
+  });
+  mutationQueue = nextMutation;
+  return nextMutation;
 };
+
+export const saveColumnRename = (columnId: string, title: string) =>
+  saveMutation(() => boardApi.renameColumn(columnId, title));
+
+export const saveCardCreate = (
+  columnId: string,
+  title: string,
+  details: string
+) => saveMutation(() => boardApi.createCard(columnId, title, details));
+
+export const saveCardDelete = (cardId: string) =>
+  saveMutation(() => boardApi.deleteCard(cardId));
+
+export const saveCardMove = (
+  cardId: string,
+  columnId: string,
+  position?: number
+) => saveMutation(() => boardApi.moveCard(cardId, columnId, position));

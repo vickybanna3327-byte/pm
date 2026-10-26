@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -13,21 +13,29 @@ import {
 } from "@dnd-kit/core";
 import { KanbanColumn } from "@/components/KanbanColumn";
 import { KanbanCardPreview } from "@/components/KanbanCardPreview";
-import { createId, moveCard } from "@/lib/kanban";
 import {
   getBoardSnapshot,
   getServerBoardSnapshot,
+  loadBoard,
+  saveCardCreate,
+  saveCardDelete,
+  saveCardMove,
+  saveColumnRename,
   subscribeToBoard,
-  updateSessionBoard,
 } from "@/lib/sessionBoard";
 
 export const KanbanBoard = ({ onLogout }: { onLogout: () => void }) => {
-  const board = useSyncExternalStore(
+  const boardState = useSyncExternalStore(
     subscribeToBoard,
     getBoardSnapshot,
     getServerBoardSnapshot
   );
   const [activeCardId, setActiveCardId] = useState<string | null>(null);
+  const board = boardState.board;
+
+  useEffect(() => {
+    void loadBoard();
+  }, []);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -35,7 +43,7 @@ export const KanbanBoard = ({ onLogout }: { onLogout: () => void }) => {
     })
   );
 
-  const cardsById = useMemo(() => board.cards, [board.cards]);
+  const cardsById = useMemo(() => board?.cards ?? {}, [board?.cards]);
 
   const handleDragStart = (event: DragStartEvent) => {
     setActiveCardId(event.active.id as string);
@@ -49,55 +57,75 @@ export const KanbanBoard = ({ onLogout }: { onLogout: () => void }) => {
       return;
     }
 
-    updateSessionBoard((prev) => ({
-      ...prev,
-      columns: moveCard(prev.columns, active.id as string, over.id as string),
-    }));
+    const cardId = String(active.id);
+    const targetId = String(over.id);
+    const targetColumn = board?.columns.find(
+      (column) =>
+        column.id === targetId || column.cardIds.includes(targetId)
+    );
+    if (targetColumn) {
+      const targetIndex = targetColumn.cardIds.indexOf(targetId);
+      const activeIndex = targetColumn.cardIds.indexOf(cardId);
+      const droppedOnColumn = targetId === targetColumn.id;
+      const position = droppedOnColumn
+        ? targetColumn.cardIds.length - (activeIndex !== -1 ? 1 : 0)
+        : targetIndex - (activeIndex !== -1 && activeIndex < targetIndex ? 1 : 0);
+      void saveCardMove(cardId, targetColumn.id, position);
+    }
   };
 
   const handleRenameColumn = (columnId: string, title: string) => {
-    updateSessionBoard((prev) => ({
-      ...prev,
-      columns: prev.columns.map((column) =>
-        column.id === columnId ? { ...column, title } : column
-      ),
-    }));
+    void saveColumnRename(columnId, title);
   };
 
   const handleAddCard = (columnId: string, title: string, details: string) => {
-    const id = createId("card");
-    updateSessionBoard((prev) => ({
-      ...prev,
-      cards: {
-        ...prev.cards,
-        [id]: { id, title, details: details || "No details yet." },
-      },
-      columns: prev.columns.map((column) =>
-        column.id === columnId
-          ? { ...column, cardIds: [...column.cardIds, id] }
-          : column
-      ),
-    }));
+    void saveCardCreate(columnId, title, details || "No details yet.");
   };
 
-  const handleDeleteCard = (columnId: string, cardId: string) => {
-    updateSessionBoard((prev) => {
-      return {
-        ...prev,
-        cards: Object.fromEntries(
-          Object.entries(prev.cards).filter(([id]) => id !== cardId)
-        ),
-        columns: prev.columns.map((column) =>
-          column.id === columnId
-            ? {
-                ...column,
-                cardIds: column.cardIds.filter((id) => id !== cardId),
-              }
-            : column
-        ),
-      };
-    });
+  const handleDeleteCard = (_columnId: string, cardId: string) => {
+    void saveCardDelete(cardId);
   };
+
+  if (boardState.status === "loading") {
+    return (
+      <main
+        aria-label="Loading board"
+        aria-busy="true"
+        className="flex min-h-screen items-center justify-center text-sm font-semibold text-[var(--gray-text)]"
+      >
+        Loading your board...
+      </main>
+    );
+  }
+
+  if (boardState.status === "error" || !board) {
+    return (
+      <main className="flex min-h-screen items-center justify-center px-6">
+        <section className="max-w-md rounded-3xl border border-[var(--stroke)] bg-white p-8 shadow-[var(--shadow)]">
+          <h1 className="font-display text-2xl font-semibold text-[var(--navy-dark)]">
+            Could not load your board
+          </h1>
+          <p role="alert" className="mt-3 text-sm text-[var(--gray-text)]">
+            {boardState.error}
+          </p>
+          <button
+            type="button"
+            onClick={() => void loadBoard()}
+            className="mt-6 rounded-full bg-[var(--secondary-purple)] px-5 py-3 text-sm font-semibold text-white"
+          >
+            Try again
+          </button>
+          <button
+            type="button"
+            onClick={onLogout}
+            className="ml-3 rounded-full border border-[var(--stroke)] px-5 py-3 text-sm font-semibold text-[var(--navy-dark)]"
+          >
+            Log out
+          </button>
+        </section>
+      </main>
+    );
+  }
 
   const activeCard = activeCardId ? cardsById[activeCardId] : null;
 
@@ -108,6 +136,16 @@ export const KanbanBoard = ({ onLogout }: { onLogout: () => void }) => {
 
       <main className="relative mx-auto flex min-h-screen max-w-[1500px] flex-col gap-10 px-6 pb-16 pt-12">
         <header className="flex flex-col gap-6 rounded-[32px] border border-[var(--stroke)] bg-white/80 p-8 shadow-[var(--shadow)] backdrop-blur">
+          {boardState.error && (
+            <p role="alert" className="text-sm font-medium text-red-700">
+              Could not save board changes: {boardState.error}
+            </p>
+          )}
+          {boardState.saving && (
+            <p role="status" className="text-sm text-[var(--gray-text)]">
+              Saving board...
+            </p>
+          )}
           <div className="flex flex-wrap items-start justify-between gap-6">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.35em] text-[var(--gray-text)]">

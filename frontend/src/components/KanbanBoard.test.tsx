@@ -1,7 +1,19 @@
 import type { ReactNode } from "react";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { KanbanBoard } from "@/components/KanbanBoard";
+import * as boardApi from "@/lib/boardApi";
+import { initialData } from "@/lib/kanban";
+
+const apiMocks = vi.hoisted(() => ({
+  fetchBoard: vi.fn(),
+  renameColumn: vi.fn(),
+  createCard: vi.fn(),
+  deleteCard: vi.fn(),
+  moveCard: vi.fn(),
+}));
+
+vi.mock("@/lib/boardApi", () => apiMocks);
 
 vi.mock("@dnd-kit/core", () => ({
   DndContext: ({
@@ -41,7 +53,7 @@ vi.mock("@dnd-kit/core", () => ({
         onClick={() =>
           onDragEnd({
             active: { id: "card-1" },
-            over: { id: "col-review" },
+            over: { id: "card-6" },
           })
         }
       />
@@ -73,31 +85,45 @@ vi.mock("@dnd-kit/utilities", () => ({
   CSS: { Transform: { toString: () => undefined } },
 }));
 
-const getFirstColumn = () => screen.getAllByTestId(/column-/i)[0];
+const getFirstColumn = async () =>
+  (await screen.findAllByTestId(/column-/i))[0];
 const renderBoard = () => render(<KanbanBoard onLogout={() => {}} />);
 
 describe("KanbanBoard", () => {
   beforeEach(() => {
-    sessionStorage.clear();
+    vi.clearAllMocks();
+    apiMocks.fetchBoard.mockResolvedValue(structuredClone(initialData));
+    apiMocks.renameColumn.mockResolvedValue(structuredClone(initialData));
+    apiMocks.createCard.mockResolvedValue(structuredClone(initialData));
+    apiMocks.deleteCard.mockResolvedValue(structuredClone(initialData));
+    apiMocks.moveCard.mockResolvedValue(structuredClone(initialData));
   });
 
-  it("renders five columns", () => {
+  it("loads and renders five columns", async () => {
     renderBoard();
-    expect(screen.getAllByTestId(/column-/i)).toHaveLength(5);
+    expect(await screen.findAllByTestId(/column-/i)).toHaveLength(5);
   });
 
   it("renames a column", async () => {
     renderBoard();
-    const column = getFirstColumn();
+    const column = await getFirstColumn();
+    await within(column).findByLabelText("Column title");
     const input = within(column).getByLabelText("Column title");
     await userEvent.clear(input);
     await userEvent.type(input, "New Name");
-    expect(input).toHaveValue("New Name");
+    fireEvent.blur(input);
+    await waitFor(() =>
+      expect(boardApi.renameColumn).toHaveBeenLastCalledWith(
+        "col-backlog",
+        "New Name"
+      )
+    );
   });
 
   it("adds and removes a card", async () => {
     renderBoard();
-    const column = getFirstColumn();
+    const column = await getFirstColumn();
+    await within(column).findByRole("button", { name: /add a card/i });
     const addButton = within(column).getByRole("button", {
       name: /add a card/i,
     });
@@ -110,18 +136,18 @@ describe("KanbanBoard", () => {
 
     await userEvent.click(within(column).getByRole("button", { name: /add card/i }));
 
-    expect(within(column).getByText("New card")).toBeInTheDocument();
-
-    const deleteButton = within(column).getByRole("button", {
-      name: /delete new card/i,
-    });
-    await userEvent.click(deleteButton);
-
-    expect(within(column).queryByText("New card")).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(boardApi.createCard).toHaveBeenCalledWith(
+        "col-backlog",
+        "New card",
+        "Notes"
+      )
+    );
   });
 
-  it("shows a drag preview and moves a card to another column", () => {
+  it("shows a drag preview and requests a card move", async () => {
     renderBoard();
+    await screen.findByTestId("card-card-1");
     fireEvent.click(screen.getByTestId("drag-start"));
 
     expect(
@@ -131,22 +157,31 @@ describe("KanbanBoard", () => {
     ).toHaveLength(2);
 
     fireEvent.click(screen.getByTestId("drag-to-review"));
-    expect(
-      within(screen.getByTestId("column-col-review")).getByTestId(
-        "card-card-1"
+    await waitFor(() =>
+      expect(boardApi.moveCard).toHaveBeenCalledWith(
+        "card-1",
+        "col-review",
+        0
       )
-    ).toBeInTheDocument();
+    );
   });
 
-  it("does not move a card when dropped without a target or on itself", () => {
+  it("does not request a move when dropped without a target or on itself", async () => {
     renderBoard();
-    const firstColumn = screen.getByTestId("column-col-backlog");
+    await screen.findByTestId("card-card-1");
 
     fireEvent.click(screen.getByTestId("drag-no-target"));
-    expect(within(firstColumn).getByTestId("card-card-1")).toBeInTheDocument();
-
     fireEvent.click(screen.getByTestId("drag-self"));
-    expect(within(firstColumn).getByTestId("card-card-1")).toBeInTheDocument();
+    expect(boardApi.moveCard).not.toHaveBeenCalled();
+  });
+
+  it("requests card deletion", async () => {
+    renderBoard();
+    const card = await screen.findByTestId("card-card-1");
+    await userEvent.click(
+      within(card).getByRole("button", { name: "Delete Align roadmap themes" })
+    );
+    expect(boardApi.deleteCard).toHaveBeenCalledWith("card-1");
   });
 
 });

@@ -2,6 +2,15 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { AuthGate } from "@/components/AuthGate";
 
+vi.mock("@/components/KanbanBoard", () => ({
+  KanbanBoard: ({ onLogout }: { onLogout: () => void }) => (
+    <main>
+      <h1>Kanban Studio</h1>
+      <button onClick={onLogout}>Log out</button>
+    </main>
+  ),
+}));
+
 describe("AuthGate", () => {
   beforeEach(() => {
     sessionStorage.clear();

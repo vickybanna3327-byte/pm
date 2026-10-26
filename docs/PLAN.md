@@ -108,20 +108,20 @@ Security note: this phase is a frontend-only demo gate using hardcoded credentia
 Goal: define the persistence model for Kanban data and confirm the approach before implementing backend storage.
 
 Checklist:
-- [ ] Define the board, column, card, and user data model in a JSON schema or data contract.
-- [ ] Document how multiple users will be supported in the future while limiting MVP to one board per user.
-- [ ] Decide how the database will represent ordering for cards within columns.
-- [ ] Write the schema documentation in docs/.
-- [ ] Get explicit user sign-off on the schema before backend implementation begins.
+- [x] Define the board, column, and card API contract in a JSON Schema; propose corresponding user and board persistence tables.
+- [x] Document how multiple users will be supported in the future while limiting MVP to one board per user.
+- [x] Decide how the database will represent ordering for columns and cards.
+- [x] Write the schema documentation in docs/.
+- [x] Get explicit user sign-off on the schema before backend implementation begins.
 
 Tests:
-- Schema validation: verify the JSON structure matches the intended board model.
-- Data contract review: ensure it supports future expansion without rework.
+- Validate that the JSON Schema file parses and declares the board, column, and card structures used by the frontend.
+- Review the proposed constraints for one board per user, foreign-key consistency, and ordered cards.
 
 Success criteria:
-- The database design is clear and agreed to by the user.
-- The schema is stored in docs/ and can be implemented directly in SQLite.
-- Backend work is based on a concrete, approved data model.
+- [x] The database design is documented and approved by the user.
+- [x] The schema is stored in docs/ and can be implemented directly in SQLite.
+- [x] Backend implementation proceeded against the approved data model.
 
 ---
 
@@ -130,12 +130,12 @@ Success criteria:
 Goal: add a FastAPI backend that can read and write board state for a user and create the database if it does not already exist.
 
 Checklist:
-- [ ] Create SQLite database initialization and migration/bootstrap setup.
-- [ ] Define user and board models keyed to the approved schema.
-- [ ] Add API routes for loading the board, updating columns, adding cards, deleting cards, and moving cards.
-- [ ] Ensure the backend supports the MVP single-board-per-user model while being structured for multi-user extension.
-- [ ] Add backend unit tests for each route and state mutation.
-- [ ] Add integration tests for end-to-end API flows using a temporary test database.
+- [x] Create SQLite database initialization and migration/bootstrap setup.
+- [x] Define user and board models keyed to the approved schema.
+- [x] Add API routes for loading the board, updating columns, adding cards, deleting cards, and moving cards.
+- [x] Ensure the backend supports the MVP single-board-per-user model while being structured for multi-user extension.
+- [x] Add backend unit tests for each route and state mutation.
+- [x] Add integration tests for end-to-end API flows using a temporary test database.
 
 Tests:
 - Unit tests for validation and database helper logic.
@@ -143,9 +143,9 @@ Tests:
 - Test database schema creation and startup behavior.
 
 Success criteria:
-- The backend can load and update the Kanban for a signed-in user.
-- The database is automatically created if absent.
-- The API is stable and tested thoroughly.
+- [x] The backend can load and update the Kanban for the seeded MVP user.
+- [x] The database is automatically created if absent.
+- [x] API routes are covered by tests for meaningful success and failure behavior.
 - Coverage is reviewed as a signal; API tests cover meaningful happy paths and error cases without a mandatory percentage gate.
 
 ---
@@ -262,4 +262,4 @@ Success criteria:
 
 ## Approval gate
 
-This plan must be reviewed and approved by the user before implementation begins. Once approved, the agent proceeds to Part 2 scaffolding and runtime validation.
+This plan must be reviewed and approved by the user before implementation begins. Once approved, the agent proceeds to Part 2 scaffolding and runtime validation. The Part 5 database proposal also requires explicit user approval before Part 6 backend persistence work begins.

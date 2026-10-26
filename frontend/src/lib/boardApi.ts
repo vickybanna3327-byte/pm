@@ -112,6 +112,12 @@ export const deleteCard = (cardId: string) =>
     method: "DELETE",
   });
 
+export const updateCard = (cardId: string, title: string, details: string) =>
+  requestBoard(`/cards/${encodeURIComponent(cardId)}`, {
+    method: "PATCH",
+    body: JSON.stringify({ title, details }),
+  });
+
 export const moveCard = (
   cardId: string,
   columnId: string,

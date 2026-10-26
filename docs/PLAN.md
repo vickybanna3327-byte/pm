@@ -159,7 +159,7 @@ Checklist:
 - [x] Replace local board state with persisted data fetched from the backend.
 - [x] Ensure drag-and-drop updates are synchronized to the backend, including target ordering.
 - [x] Ensure add-card, delete-card, and rename-column operations persist correctly.
-- [ ] Add UI and API integration for editing an existing card's title/details and persisting the edit.
+- [x] Add UI and API integration for editing an existing card's title/details and persisting the edit.
 - [x] Handle loading, retry, save-progress, and error states.
 - [x] Perform integration testing for the full user flow.
 
@@ -174,9 +174,8 @@ Implementation decisions:
 
 Tests:
 - Frontend unit tests cover API request paths, methods, payloads, response validation, and store error handling.
-- Playwright tests exercise sign-in, board rendering, card creation/deletion/movement, column renaming, and persistence through reload/logout/sign-in using a stateful API mock.
-- Backend API tests cover SQLite persistence and ordered moves; the built Docker app was also exercised live in a browser against its actual SQLite API.
-- Card-editing coverage remains outstanding with the unchecked card-editing requirement above.
+- Playwright tests exercise sign-in, board rendering, card creation/editing/deletion/movement, column renaming, and persistence through reload/logout/sign-in using a stateful API mock.
+- Backend API tests cover SQLite persistence, card edits, and ordered moves; the built Docker app was also exercised live in a browser against its actual SQLite API.
 
 Success criteria:
 - [x] Supported board operations are persistent across refreshes and API interactions.
@@ -191,21 +190,28 @@ Success criteria:
 Goal: verify that the project can make outbound LLM calls through OpenRouter.
 
 Checklist:
-- [ ] Configure the backend to read the OpenRouter API key from the project environment.
-- [ ] Use the approved model openai/gpt-oss-120b.
-- [ ] Add a minimal connectivity test that calls the AI with a simple prompt such as "2 + 2".
-- [ ] Validate the response structure and confirm the backend receives a valid LLM response.
-- [ ] Document failure modes for invalid keys, network issues, or provider errors.
+- [x] Configure the backend to read the OpenRouter API key from the project environment.
+- [x] Use the approved model openai/gpt-oss-120b.
+- [x] Add a minimal connectivity endpoint and opt-in integration test using a simple prompt such as "2 + 2".
+- [x] Validate the response structure and add mocked tests for valid and invalid provider responses.
+- [x] Document failure modes for invalid keys, network issues, timeouts, malformed responses, and provider errors.
+
+Implementation decisions:
+- `POST /api/ai/connectivity` submits a fixed `2 + 2` prompt and returns the selected model and non-empty response.
+- The backend loads `OPENROUTER_API_KEY` from the repository-root `.env` when present; an existing process environment value takes precedence.
+- Provider requests use a 30-second timeout. Missing configuration returns 503; provider/network/timeout/response failures return 502 without exposing the key.
+- Fast tests mock HTTP responses. A live provider test is available by setting `RUN_OPENROUTER_INTEGRATION=1`; it has not been run in this workspace because no root `.env` file or process API key is configured.
 
 Tests:
 - Unit tests for environment config and request construction.
-- Integration test for a simple prompt and response validation.
-- Negative tests for missing or invalid API keys.
+- Mocked API tests cover request construction, response validation, missing/invalid API keys, and network failures.
+- An opt-in integration test sends the prompt to OpenRouter and validates the returned model and response.
 
 Success criteria:
-- The backend makes a successful AI request with a known-good configuration.
-- Basic connectivity is verified before any Kanban AI logic is built.
-- The model returns expected content and the backend handles failures cleanly.
+- [ ] The backend makes a successful live AI request with a known-good configuration (requires a configured API key).
+- [x] The mocked request contract and response parsing are verified before any Kanban AI logic is built.
+- [ ] A live model response is validated; missing API-key configuration leaves this pending.
+- [x] The backend handles missing credentials, provider/network failures, timeouts, and malformed responses cleanly.
 
 ---
 

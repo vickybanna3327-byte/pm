@@ -3,15 +3,18 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from collections.abc import AsyncIterator
 
+from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from backend.app.board_api import router as board_router
 from backend.app.database import connect_database, initialize_database
+from backend.app.openrouter_api import router as openrouter_router
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 FRONTEND_EXPORT = REPOSITORY_ROOT / "frontend" / "out"
 DEFAULT_DATABASE = REPOSITORY_ROOT / "data" / "pm.db"
+load_dotenv(REPOSITORY_ROOT / ".env")
 
 
 def database_path() -> Path:
@@ -29,6 +32,7 @@ def create_app(database: Path | None = None) -> FastAPI:
     app = FastAPI(title="PM MVP Backend", lifespan=lifespan)
     app.state.database_path = selected_database
     app.include_router(board_router)
+    app.include_router(openrouter_router)
 
     def database_connection():
         connection = connect_database(selected_database)

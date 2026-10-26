@@ -61,6 +61,18 @@ const installBoardApiMock = async (page: Page) => {
       return;
     }
 
+    const updateMatch = pathname.match(
+      /^\/api\/users\/user\/board\/cards\/([^/]+)$/
+    );
+    if (updateMatch && method === "PATCH") {
+      const cardId = decodeURIComponent(updateMatch[1]);
+      if (board.cards[cardId]) {
+        Object.assign(board.cards[cardId], route.request().postDataJSON());
+      }
+      await route.fulfill({ json: board });
+      return;
+    }
+
     const moveMatch = pathname.match(
       /^\/api\/users\/user\/board\/cards\/([^/]+)\/move$/
     );
@@ -164,6 +176,32 @@ test("persists column renames and card deletion", async ({ page }) => {
   await page.reload();
   await expect(page.getByLabel("Column title").first()).toHaveValue("Ready");
   await expect(page.getByTestId("card-card-1")).not.toBeVisible();
+});
+
+test("edits and persists a card's title and details", async ({ page }) => {
+  await page.goto("/");
+  await page.getByLabel("Username").fill("user");
+  await page.getByLabel("Password").fill("password");
+  await page.getByRole("button", { name: "Sign in" }).click();
+
+  const card = page.getByTestId("card-card-1");
+  await card.getByRole("button", { name: "Edit Align roadmap themes" }).click();
+  await card.getByRole("textbox", {
+    name: "Edit title for Align roadmap themes",
+  }).fill("Updated roadmap");
+  await card.getByRole("textbox", {
+    name: "Edit details for Align roadmap themes",
+  }).fill("Updated impact statements.");
+  await card.getByRole("button", { name: "Save changes" }).click();
+
+  await expect(card.getByRole("heading", { name: "Updated roadmap" })).toBeVisible();
+  await expect(card.getByText("Updated impact statements.")).toBeVisible();
+  await page.reload();
+  const persistedCard = page.getByTestId("card-card-1");
+  await expect(
+    persistedCard.getByRole("heading", { name: "Updated roadmap" })
+  ).toBeVisible();
+  await expect(persistedCard.getByText("Updated impact statements.")).toBeVisible();
 });
 
 test("rejects invalid credentials and supports logout", async ({ page }) => {

@@ -4,6 +4,7 @@ import {
   fetchBoard,
   moveCard,
   renameColumn,
+  updateCard,
 } from "@/lib/boardApi";
 import { initialData } from "@/lib/kanban";
 import { getBoardSnapshot, loadBoard, saveColumnRename } from "@/lib/sessionBoard";
@@ -61,6 +62,18 @@ describe("board API", () => {
     expect(fetchMock).toHaveBeenLastCalledWith(
       "/api/users/user/board/cards/card-1",
       expect.objectContaining({ method: "DELETE" })
+    );
+
+    await updateCard("card-1", "Updated task", "Updated details");
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "/api/users/user/board/cards/card-1",
+      expect.objectContaining({
+        method: "PATCH",
+        body: JSON.stringify({
+          title: "Updated task",
+          details: "Updated details",
+        }),
+      })
     );
 
     await moveCard("card-1", "col-review", 0);

@@ -10,6 +10,7 @@ const apiMocks = vi.hoisted(() => ({
   renameColumn: vi.fn(),
   createCard: vi.fn(),
   deleteCard: vi.fn(),
+  updateCard: vi.fn(),
   moveCard: vi.fn(),
 }));
 
@@ -96,6 +97,7 @@ describe("KanbanBoard", () => {
     apiMocks.renameColumn.mockResolvedValue(structuredClone(initialData));
     apiMocks.createCard.mockResolvedValue(structuredClone(initialData));
     apiMocks.deleteCard.mockResolvedValue(structuredClone(initialData));
+    apiMocks.updateCard.mockResolvedValue(structuredClone(initialData));
     apiMocks.moveCard.mockResolvedValue(structuredClone(initialData));
   });
 
@@ -182,6 +184,47 @@ describe("KanbanBoard", () => {
       within(card).getByRole("button", { name: "Delete Align roadmap themes" })
     );
     expect(boardApi.deleteCard).toHaveBeenCalledWith("card-1");
+  });
+
+  it("submits edits to a card's title and details", async () => {
+    renderBoard();
+    const card = await screen.findByTestId("card-card-1");
+    await userEvent.click(
+      within(card).getByRole("button", { name: "Edit Align roadmap themes" })
+    );
+    await userEvent.clear(
+      within(card).getByRole("textbox", {
+        name: "Edit title for Align roadmap themes",
+      })
+    );
+    await userEvent.type(
+      within(card).getByRole("textbox", {
+        name: "Edit title for Align roadmap themes",
+      }),
+      "Updated roadmap"
+    );
+    await userEvent.clear(
+      within(card).getByRole("textbox", {
+        name: "Edit details for Align roadmap themes",
+      })
+    );
+    await userEvent.type(
+      within(card).getByRole("textbox", {
+        name: "Edit details for Align roadmap themes",
+      }),
+      "Updated details"
+    );
+    await userEvent.click(
+      within(card).getByRole("button", { name: "Save changes" })
+    );
+
+    await waitFor(() =>
+      expect(boardApi.updateCard).toHaveBeenCalledWith(
+        "card-1",
+        "Updated roadmap",
+        "Updated details"
+      )
+    );
   });
 
 });

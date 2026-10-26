@@ -19,6 +19,10 @@ class CardCreate(BaseModel):
     title: str
     details: str = ""
 
+class CardUpdate(BaseModel):
+    title: str
+    details: str
+
 
 class CardMove(BaseModel):
     column_id: str
@@ -177,6 +181,34 @@ def delete_card(
             ).fetchall()
         ]
         set_card_order(connection, card["column_id"], remaining_ids)
+    return serialize_board(connection, board["id"])
+
+
+@router.patch("/cards/{card_id}")
+def update_card(
+    user_id: str,
+    card_id: str,
+    update: CardUpdate,
+    connection: DatabaseConnection,
+) -> dict[str, object]:
+    board = get_board_row(connection, user_id)
+    card = connection.execute(
+        """
+        SELECT cards.id
+        FROM cards
+        JOIN columns ON columns.id = cards.column_id
+        WHERE cards.id = ? AND columns.board_id = ?
+        """,
+        (card_id, board["id"]),
+    ).fetchone()
+    if card is None:
+        raise HTTPException(status_code=404, detail="Card not found.")
+
+    with connection:
+        connection.execute(
+            "UPDATE cards SET title = ?, details = ? WHERE id = ?",
+            (update.title, update.details, card_id),
+        )
     return serialize_board(connection, board["id"])
 
 

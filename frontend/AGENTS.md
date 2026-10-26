@@ -17,7 +17,7 @@ This directory contains the Next.js frontend for the project management MVP. The
   - Loads the board and renders loading, error, and save status.
   - Coordinates board operations with the external board store.
   - Uses `@dnd-kit` for drag interactions.
-  - Persists column renames, card creation/deletion, and card movement.
+  - Persists column renames, card creation/editing/deletion, and card movement.
 - `src/components/AuthGate.tsx`
   - Gates the demo board behind the hardcoded MVP credentials.
   - Stores the signed-in flag in `sessionStorage`, so it lasts only for the current tab session.
@@ -26,7 +26,7 @@ This directory contains the Next.js frontend for the project management MVP. The
   - Maintains the loaded board and loading/error/saving status in a small external store.
   - Serializes mutations so each response is applied in request order.
 - `src/lib/boardApi.ts`
-  - Calls the FastAPI board endpoints and validates the returned `BoardData` shape.
+  - Calls the FastAPI board endpoints, including card editing, and validates the returned `BoardData` shape.
   - Reports HTTP, network, and invalid-response errors to the board store.
 - `src/components/KanbanColumn.tsx`
   - Renders a single board column.
@@ -34,7 +34,7 @@ This directory contains the Next.js frontend for the project management MVP. The
   - Uses a `NewCardForm` for adding cards.
 - `src/components/KanbanCard.tsx`
   - Displays a card and its details.
-  - Includes card deletion behavior.
+  - Supports editing title/details and deleting cards.
 - `src/components/KanbanCardPreview.tsx`
   - Small drag preview component used while a card is being dragged.
 - `src/components/NewCardForm.tsx`

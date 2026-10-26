@@ -80,6 +80,9 @@ export const saveCardCreate = (
 export const saveCardDelete = (cardId: string) =>
   saveMutation(() => boardApi.deleteCard(cardId));
 
+export const saveCardUpdate = (cardId: string, title: string, details: string) =>
+  saveMutation(() => boardApi.updateCard(cardId, title, details));
+
 export const saveCardMove = (
   cardId: string,
   columnId: string,

@@ -20,6 +20,7 @@ import {
   saveCardCreate,
   saveCardDelete,
   saveCardMove,
+  saveCardUpdate,
   saveColumnRename,
   subscribeToBoard,
 } from "@/lib/sessionBoard";
@@ -84,6 +85,14 @@ export const KanbanBoard = ({ onLogout }: { onLogout: () => void }) => {
 
   const handleDeleteCard = (_columnId: string, cardId: string) => {
     void saveCardDelete(cardId);
+  };
+
+  const handleUpdateCard = (
+    cardId: string,
+    title: string,
+    details: string
+  ) => {
+    void saveCardUpdate(cardId, title, details);
   };
 
   if (boardState.status === "loading") {
@@ -205,6 +214,7 @@ export const KanbanBoard = ({ onLogout }: { onLogout: () => void }) => {
                 onRename={handleRenameColumn}
                 onAddCard={handleAddCard}
                 onDeleteCard={handleDeleteCard}
+                onUpdateCard={handleUpdateCard}
               />
             ))}
           </section>

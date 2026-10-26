@@ -126,6 +126,30 @@ def test_delete_unknown_card_returns_not_found(client: TestClient) -> None:
     assert response.json()["detail"] == "Card not found."
 
 
+def test_update_card_persists_title_and_details(client: TestClient) -> None:
+    response = client.patch(
+        f"{BOARD_URL}/cards/card-1",
+        json={"title": "Updated roadmap", "details": "Updated details."},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["cards"]["card-1"] == {
+        "id": "card-1",
+        "title": "Updated roadmap",
+        "details": "Updated details.",
+    }
+    assert client.get(BOARD_URL).json() == response.json()
+
+
+def test_update_unknown_card_returns_not_found(client: TestClient) -> None:
+    response = client.patch(
+        f"{BOARD_URL}/cards/missing",
+        json={"title": "Updated roadmap", "details": "Updated details."},
+    )
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Card not found."
+
+
 def test_move_card_between_columns_and_persist_order(
     client: TestClient, database_path: Path
 ) -> None:

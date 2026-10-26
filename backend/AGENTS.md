@@ -11,8 +11,10 @@ This directory contains the FastAPI backend for the project management MVP. It s
 - `/health` returns a JSON success payload for health checks.
 - `/api/hello` returns a sample JSON response confirming that the API is responding.
 - `app/database.py` creates and seeds the SQLite schema on startup.
-- `app/board_api.py` implements board read, column rename, card create/delete, and card move routes.
+- `app/board_api.py` implements board read, column rename, card create/edit/delete, and card move routes.
+- `app/openrouter_api.py` makes a minimal OpenRouter chat-completion request for connectivity verification.
 - The SQLite path is configured with `PM_DATABASE_PATH`; by default it is `data/pm.db` at the repository root.
+- `OPENROUTER_API_KEY` is loaded from the repository-root `.env` file when present or from the process environment. It is never returned by an API route.
 - The MVP seeds user ID `user` with one board. This is data initialization, not authentication; the frontend demo login does not protect backend routes.
 
 ## Local runtime expectations
@@ -30,10 +32,18 @@ Build the frontend first with `npm run build` from `frontend/`; the static expor
 - `GET /api/users/{user_id}/board`
 - `PATCH /api/users/{user_id}/board/columns/{column_id}`
 - `POST /api/users/{user_id}/board/columns/{column_id}/cards`
+- `PATCH /api/users/{user_id}/board/cards/{card_id}`
 - `DELETE /api/users/{user_id}/board/cards/{card_id}`
 - `POST /api/users/{user_id}/board/cards/{card_id}/move`
 
 Mutation responses return the complete board in the frontend `BoardData` shape.
+
+## OpenRouter connectivity
+
+- `POST /api/ai/connectivity` sends a fixed `2 + 2` prompt to `openai/gpt-oss-120b`.
+- Missing configuration returns HTTP 503; invalid credentials, provider failures, network errors, and malformed responses return HTTP 502 with a safe explanation.
+- The request has a 30-second timeout.
+- Unit/API tests mock the provider. To make a real provider request, set `RUN_OPENROUTER_INTEGRATION=1` and `OPENROUTER_API_KEY`, then run `python -m pytest backend/tests/test_openrouter_integration.py` from the repository root. Do not commit `.env`.
 
 ## Development conventions
 

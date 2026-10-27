@@ -108,7 +108,10 @@ def test_chat_applies_card_column_and_move_actions_atomically(
         if card["title"] == "Follow up"
     )]
     assert board["columns"][3]["cardIds"] == ["card-1", "card-6"]
-    assert board["cards"]["card-1"] == {
+    assert {
+        key: board["cards"]["card-1"][key]
+        for key in ("id", "title", "details")
+    } == {
         "id": "card-1",
         "title": "Updated roadmap",
         "details": "New details.",

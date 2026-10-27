@@ -165,7 +165,7 @@ Checklist:
 
 Implementation decisions:
 - SQLite is the source of truth for board data. The frontend keeps the loaded `BoardData` in an external store; it does not use browser storage as a board cache.
-- The MVP frontend calls the fixed `/api/users/user/board` path. The sign-in remains a frontend-only demo gate; the backend routes are not authenticated.
+- The frontend calls the authenticated user's legacy board endpoint or the active project's `/api/projects/{project_id}/board` route. FastAPI session cookies authenticate API requests.
 - Each successful mutation returns the complete board. The frontend serializes mutations and replaces its board state with each response rather than applying optimistic updates.
 - Column/card ordering uses integer positions in SQLite. Dragging over a card inserts at that card's position; dropping on a column appends.
 - Column title edits are submitted on blur after trimming whitespace; blank titles are not submitted.
@@ -200,7 +200,7 @@ Implementation decisions:
 - `POST /api/ai/connectivity` submits a fixed `2 + 2` prompt and returns the selected model and non-empty response.
 - The backend loads `OPENROUTER_API_KEY` from the repository-root `.env` when present; an existing process environment value takes precedence.
 - Provider requests use a 30-second timeout. Missing configuration returns 503; provider/network/timeout/response failures return 502 without exposing the key.
-- Fast tests mock HTTP responses. A live provider test is available by setting `RUN_OPENROUTER_INTEGRATION=1`; it has not been run in this workspace because no root `.env` file or process API key is configured.
+- Fast tests mock HTTP responses. A live provider test is available by setting `RUN_OPENROUTER_INTEGRATION=1`; the live connectivity endpoint was also verified using the configured root `.env` key and returned `4` from `openai/gpt-oss-120b`.
 
 Tests:
 - Unit tests for environment config and request construction.
@@ -208,9 +208,9 @@ Tests:
 - An opt-in integration test sends the prompt to OpenRouter and validates the returned model and response.
 
 Success criteria:
-- [ ] The backend makes a successful live AI request with a known-good configuration (requires a configured API key).
+- [x] The backend makes a successful live AI request with the configured key.
 - [x] The mocked request contract and response parsing are verified before any Kanban AI logic is built.
-- [ ] A live model response is validated; missing API-key configuration leaves this pending.
+- [x] The live model response was validated and returned the expected answer.
 - [x] The backend handles missing credentials, provider/network failures, timeouts, and malformed responses cleanly.
 
 ---
@@ -232,16 +232,18 @@ Implementation decisions:
 - The backend fetches the board from SQLite rather than accepting client-supplied board state, and submits it in the system context with conversation history and the latest question.
 - OpenRouter is asked for a JSON object containing a non-empty `reply` and optional `actions`. Supported actions are `create_card`, `update_card`, `move_card`, and `rename_column`; delete is intentionally not included.
 - Successful responses include the assistant reply, the complete current board, and a `changed` flag. Mutations run in one transaction; invalid references, positions, or malformed model output are rejected without partial updates.
-- Backend tests mock OpenRouter. A live model response remains subject to Part 8's configured-key integration check.
+- Backend tests mock OpenRouter for deterministic mutation coverage. A live board-aware chat request was also verified against OpenRouter and returned a structured response without changing the board.
 
 Tests:
 - Tests cover prompt construction with board/history, JSON-mode request format, text-only responses, each supported mutation type, invalid client and model payloads, unknown board IDs, and transactional rollback.
 - Tests validate read-only and mutation responses against a temporary SQLite database while mocking external model calls.
+- Live smoke check: the board-aware chat endpoint returned a reply from `openai/gpt-oss-120b`, with `changed: false` and the board returned in the response.
 
 Success criteria:
 - [x] The backend constructs a request using board context, question, and conversation history.
 - [x] The backend parses responses that include optional Kanban changes.
 - [x] Invalid AI output is rejected without corrupting board state.
+- [x] A live board-aware read-only chat request returned a valid structured response from the configured model.
 - AI tests prioritize structured-output behavior, error cases, and state integrity; 80% is aspirational when sensible, not a release gate.
 
 ---
@@ -251,23 +253,54 @@ Success criteria:
 Goal: add the final user-facing AI chat experience and ensure the UI refreshes automatically when the LLM modifies the board.
 
 Checklist:
-- [ ] Add a sidebar chat widget to the main board UI.
-- [ ] Allow the user to send a prompt and receive an AI response in context.
-- [ ] Support optional board updates returned by the AI.
-- [ ] Automatically refresh the board when AI updates are accepted.
-- [ ] Ensure the chat history is preserved and displayed correctly.
-- [ ] Add UI tests for chat flows and board refresh behavior.
+- [x] Add a sidebar chat widget to the main board UI.
+- [x] Allow the user to send a prompt and receive an AI response in context.
+- [x] Support optional board updates returned by the AI.
+- [x] Automatically refresh the board when the backend returns the updated board.
+- [x] Preserve and display conversation history while the board UI remains mounted; send prior turns with follow-up prompts.
+- [x] Add UI tests for chat flows and board refresh behavior.
+
+Implementation decisions:
+- The chat sidebar calls the authenticated user's legacy board chat endpoint or the active project's `/api/projects/{project_id}/board/chat`; the backend remains the source of truth for current board context and applies optional model mutations.
+- The frontend submits prior user/assistant turns as the next request's history. Conversation display is held in component state for the active board view and is not persisted across reloads.
+- Chat requests join the existing board mutation queue so a local board mutation cannot race and overwrite a chat response. A valid response replaces the external store's complete board; request errors are displayed beside the composer and preserve the draft.
+- The sidebar is responsive and remains available alongside the board on wide screens, with its own scrollable conversation region.
 
 Tests:
-- Frontend unit tests for chat state and UI rendering.
-- Integration tests covering AI request, response, and board refresh.
-- End-to-end tests verifying that the board updates after an AI mutation.
+- Frontend unit tests cover the chat payload/response validation, mutation queue store behavior, context forwarding, returned-board replacement, and visible API errors.
+- Playwright uses a stateful chat API mock to verify multi-turn context and immediate card movement in the board without a reload.
 
 Success criteria:
-- Users can chat with the AI from the sidebar and ask for board changes.
-- If the AI updates the board, the UI refreshes automatically without manual reload.
-- The overall experience is polished, functional, and tested.
+- [x] Users can chat with the AI from the sidebar and request board changes.
+- [x] AI board updates appear in the UI automatically without manual reload.
+- [x] The chat interaction and board refresh are covered by unit and browser tests.
+- [x] The UI flow is verified end to end with a stateful API mock.
+
+Live OpenRouter requests remain dependent on the configured-key check documented in Part 8.
 - Final test pass includes both frontend and backend suites with no critical regressions.
+
+---
+
+## Part 11: Workspace and project platform foundation
+
+Goal: evolve the single-board MVP into a multi-user workspace/project foundation while preserving existing accounts and Kanban data.
+
+Implemented:
+- [x] Add personal/team workspaces, workspace/project memberships, and multiple project boards per user.
+- [x] Migrate existing users and boards while preserving their board, column, and card IDs/content, and create a database backup before rebuilding the boards table.
+- [x] Create a personal workspace, starter project, and sample Kanban template for new accounts.
+- [x] Add membership-checked workspace/project APIs, project-scoped board and AI routes, task metadata, and dashboard aggregates.
+- [x] Add an authenticated dashboard with project search/filter, creation, metrics, and project-board navigation.
+- [x] Cover the workspace/dashboard and project-board paths with backend, frontend, and Playwright tests.
+
+Still outstanding from the broader platform scope:
+- [ ] Implement invitation/acceptance and workspace/project membership/role management.
+- [ ] Add task comments/checklist APIs and UI, and activity history.
+- [ ] Add notifications and notification preferences.
+- [ ] Add profile/account settings and archived-project management UI.
+- [ ] Complete RBAC edge-case review and validate the production/Docker deployment end to end.
+
+Current validation snapshot: backend tests passed (80 passed, 1 skipped); frontend unit tests passed (29); ESLint and Next.js production build passed; Kanban Playwright tests passed (8). Re-run these checks after completing the outstanding collaboration work.
 
 ---
 

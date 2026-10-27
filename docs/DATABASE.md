@@ -1,72 +1,25 @@
-# Database design proposal
+# Database model
 
-This proposal is for approval before SQLite persistence is implemented. The board API representation is defined in [DB_SCHEMA.json](./DB_SCHEMA.json) and follows the current frontend `BoardData` shape.
+The application uses direct SQL without an ORM. Local development uses SQLite through `sqlite3`; hosted deployments can use PostgreSQL through `psycopg`. Startup initializes the selected database and preserves existing SQLite board, column, and card IDs and content.
 
-## SQLite model
+## Current entities
 
-Use four normalized tables:
+- `users` stores account identity and authentication fields.
+- `workspaces` and `workspace_members` provide personal/team boundaries and workspace roles.
+- `projects` belong to one workspace and owner; `project_members` grants project-scoped access.
+- `boards` belong to projects and retain the creator in `user_id`. A user can own multiple project boards.
+- `columns` and `cards` preserve the existing ordered Kanban representation.
 
-- `users`: one row per user, with a stable text primary key and a unique username. The MVP has one seeded user named `user`; the hardcoded demo password is not stored in the database.
-- `boards`: one row per board, with a text primary key and a `user_id` foreign key. A unique constraint on `user_id` enforces one board per user.
-- `columns`: board columns with a text primary key, `board_id`, editable title, and integer `position`. A unique `(board_id, position)` constraint preserves the board's fixed column order.
-- `cards`: cards with a text primary key, `column_id`, title, details, and integer `position`. A unique `(column_id, position)` constraint preserves card order within a column.
+Every existing user receives a private personal workspace. Existing boards are linked to a project in that workspace without changing their IDs or card data. Before the board relationship migration, startup creates a SQLite backup next to the database using the `.before-workspace-migration` suffix.
 
-Enable SQLite foreign-key enforcement for each connection. Deleting a board cascades to its columns and cards; deleting a column cascades to its cards. Do not add a separate `cardIds` table: card ordering is represented by each card's `position`, and the API maps the normalized rows to the `columns[].cardIds` and `cards` JSON shape.
+New users receive a personal workspace, a starter project, and a board preloaded with the sample Kanban template (five status columns and eight example cards). Existing empty personal starter boards are seeded once at startup; boards containing user data are left unchanged. Team workspaces are private until membership is explicitly added. Workspace and project APIs verify membership before returning records; identifiers alone do not grant access.
 
-Example DDL for the proposed model:
+## Board and task data
 
-```sql
-PRAGMA foreign_keys = ON;
+Board reads return ordered `columns`, each with `id`, `title`, and ordered `cardIds`, plus a `cards` map keyed by card ID. The backend persists column/card ordering in integer positions. Project boards are available through `/api/projects/{project_id}/board`; the legacy user-board endpoint remains available for the user's first board.
 
-CREATE TABLE users (
-    id TEXT PRIMARY KEY,
-    username TEXT NOT NULL UNIQUE
-);
+Cards retain the original title/details fields and now include task metadata such as priority, assignee, reporter, labels, dates, status, and timestamps. Assignees must have access to the relevant workspace or project. Comment and checklist tables are present in the schema, but their APIs and UI are not yet implemented.
 
-CREATE TABLE boards (
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
-    title TEXT NOT NULL
-);
+## Local database
 
-CREATE TABLE columns (
-    id TEXT PRIMARY KEY,
-    board_id TEXT NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
-    title TEXT NOT NULL,
-    position INTEGER NOT NULL CHECK (position >= 0),
-    UNIQUE (board_id, position)
-);
-
-CREATE TABLE cards (
-    id TEXT PRIMARY KEY,
-    column_id TEXT NOT NULL REFERENCES columns(id) ON DELETE CASCADE,
-    title TEXT NOT NULL,
-    details TEXT NOT NULL,
-    position INTEGER NOT NULL CHECK (position >= 0),
-    UNIQUE (column_id, position)
-);
-```
-
-## Board contract and consistency
-
-The JSON contract deliberately mirrors the existing frontend:
-
-- `columns` is ordered; its array order maps to the SQLite column `position`.
-- Each column has `id`, editable `title`, and ordered `cardIds`.
-- `cards` is keyed by card ID; each value has `id`, `title`, and `details`.
-- Every card must appear exactly once in a column's `cardIds`, and the map key must match the card's `id`. These cross-reference rules are enforced by backend validation because JSON Schema cannot express the full relational consistency requirement.
-- Empty strings remain permitted for titles/details at this persistence boundary; input validation can apply the UX rules when API routes are implemented.
-
-User IDs are separate from usernames so usernames can change without re-keying boards. The one-board-per-user constraint is enforced by `boards.user_id`; adding users later requires no schema redesign. Password handling is outside this proposal: the current frontend-only credential gate is a demo, not backend authentication.
-
-## Implemented API contract
-
-The approved schema is implemented by the Part 6 backend. The MVP seeds user ID `user` and its initial board, and exposes:
-
-- `GET /api/users/{user_id}/board`
-- `PATCH /api/users/{user_id}/board/columns/{column_id}` with `{ "title": "..." }`
-- `POST /api/users/{user_id}/board/columns/{column_id}/cards` with `{ "title": "...", "details": "..." }`
-- `DELETE /api/users/{user_id}/board/cards/{card_id}`
-- `POST /api/users/{user_id}/board/cards/{card_id}/move` with `{ "column_id": "...", "position": 0 }`; omit `position` to append.
-
-Each successful mutation returns the full board in the JSON contract. Unknown users, columns, and cards return 404; a move position beyond the target column's end returns 422. The SQLite database path is configured through `PM_DATABASE_PATH`, defaulting to `data/pm.db` under the repository root.
+`DATABASE_URL` selects PostgreSQL when it starts with `postgres://` or `postgresql://`. When it is unset, `PM_DATABASE_PATH` selects the SQLite file, which defaults to `data/pm.db` under the repository root. Local Docker Compose mounts `/app/data` as a persistent volume. Hosted Render services use Neon PostgreSQL because Render's free service filesystem is temporary.

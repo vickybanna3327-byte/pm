@@ -3,6 +3,8 @@ import os
 import httpx
 from fastapi import APIRouter, HTTPException
 
+from backend.app.auth_api import AuthenticatedUser, OriginCheck
+
 router = APIRouter(prefix="/api/ai", tags=["ai"])
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
@@ -69,7 +71,10 @@ async def request_chat_completion(
 
 
 @router.post("/connectivity")
-async def check_connectivity() -> dict[str, str]:
+async def check_connectivity(
+    _: AuthenticatedUser,
+    __: OriginCheck,
+) -> dict[str, str]:
     api_key = os.getenv("OPENROUTER_API_KEY", "").strip()
     if not api_key:
         raise HTTPException(

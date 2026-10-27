@@ -1,6 +1,28 @@
 import type { BoardData } from "@/lib/kanban";
 
-const BOARD_URL = "/api/users/user/board";
+const BOARD_URL = "/api/users/me/board";
+let activeProjectId: string | null = null;
+
+export const setActiveProjectId = (projectId: string | null) => {
+  activeProjectId = projectId;
+};
+
+const currentBoardUrl = () =>
+  activeProjectId
+    ? `/api/projects/${encodeURIComponent(activeProjectId)}/board`
+    : BOARD_URL;
+
+export type ChatMessage = {
+  role: "user" | "assistant";
+  content: string;
+};
+
+export type BoardChatResponse = {
+  model: string;
+  reply: string;
+  board: BoardData;
+  changed: boolean;
+};
 
 const isBoardData = (value: unknown): value is BoardData => {
   if (!value || typeof value !== "object") {
@@ -65,7 +87,7 @@ const requestBoard = async (
   path = "",
   init?: RequestInit
 ): Promise<BoardData> => {
-  const response = await fetch(`${BOARD_URL}${path}`, {
+  const response = await fetch(`${currentBoardUrl()}${path}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",
@@ -130,3 +152,42 @@ export const moveCard = (
       ...(position === undefined ? {} : { position }),
     }),
   });
+
+export const chatWithBoard = async (
+  question: string,
+  history: ChatMessage[]
+): Promise<BoardChatResponse> => {
+  const response = await fetch(`${currentBoardUrl()}/chat`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ question, history }),
+  });
+
+  if (!response.ok) {
+    const body: unknown = await response.json();
+    const detail =
+      body && typeof body === "object" && "detail" in body
+        ? String(body.detail)
+        : response.statusText;
+    throw new Error(detail || `Request failed (${response.status}).`);
+  }
+
+  const result: unknown = await response.json();
+  if (
+    !result ||
+    typeof result !== "object" ||
+    !("model" in result) ||
+    typeof result.model !== "string" ||
+    !("reply" in result) ||
+    typeof result.reply !== "string" ||
+    !result.reply.trim() ||
+    !("board" in result) ||
+    !isBoardData(result.board) ||
+    !("changed" in result) ||
+    typeof result.changed !== "boolean"
+  ) {
+    throw new Error("The server returned an invalid chat response.");
+  }
+
+  return result as BoardChatResponse;
+};

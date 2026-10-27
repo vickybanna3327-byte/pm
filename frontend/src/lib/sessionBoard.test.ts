@@ -1,5 +1,6 @@
 import {
   createCard,
+  chatWithBoard,
   deleteCard,
   fetchBoard,
   moveCard,
@@ -7,7 +8,12 @@ import {
   updateCard,
 } from "@/lib/boardApi";
 import { initialData } from "@/lib/kanban";
-import { getBoardSnapshot, loadBoard, saveColumnRename } from "@/lib/sessionBoard";
+import {
+  getBoardSnapshot,
+  loadBoard,
+  saveColumnRename,
+  sendBoardChat,
+} from "@/lib/sessionBoard";
 
 const response = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
@@ -26,7 +32,7 @@ describe("board API", () => {
 
     await expect(fetchBoard()).resolves.toEqual(initialData);
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/users/user/board",
+      "/api/users/me/board",
       expect.objectContaining({ headers: { "Content-Type": "application/json" } })
     );
   });
@@ -37,7 +43,7 @@ describe("board API", () => {
 
     await renameColumn("col-backlog", "Queued");
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/users/user/board/columns/col-backlog",
+      "/api/users/me/board/columns/col-backlog",
       expect.objectContaining({
         method: "PATCH",
         body: JSON.stringify({ title: "Queued" }),
@@ -51,7 +57,7 @@ describe("board API", () => {
 
     await createCard("col-backlog", "New task", "Task details");
     expect(fetchMock).toHaveBeenLastCalledWith(
-      "/api/users/user/board/columns/col-backlog/cards",
+      "/api/users/me/board/columns/col-backlog/cards",
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify({ title: "New task", details: "Task details" }),
@@ -60,13 +66,13 @@ describe("board API", () => {
 
     await deleteCard("card-1");
     expect(fetchMock).toHaveBeenLastCalledWith(
-      "/api/users/user/board/cards/card-1",
+      "/api/users/me/board/cards/card-1",
       expect.objectContaining({ method: "DELETE" })
     );
 
     await updateCard("card-1", "Updated task", "Updated details");
     expect(fetchMock).toHaveBeenLastCalledWith(
-      "/api/users/user/board/cards/card-1",
+      "/api/users/me/board/cards/card-1",
       expect.objectContaining({
         method: "PATCH",
         body: JSON.stringify({
@@ -78,11 +84,60 @@ describe("board API", () => {
 
     await moveCard("card-1", "col-review", 0);
     expect(fetchMock).toHaveBeenLastCalledWith(
-      "/api/users/user/board/cards/card-1/move",
+      "/api/users/me/board/cards/card-1/move",
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify({ column_id: "col-review", position: 0 }),
       })
+    );
+  });
+
+  it("sends board chat messages and validates the complete response", async () => {
+    const chatResponse = {
+      model: "openai/gpt-oss-120b",
+      reply: "I moved the card.",
+      board: initialData,
+      changed: true,
+    };
+    const fetchMock = vi.fn().mockResolvedValue(response(chatResponse));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      chatWithBoard("Move card one.", [
+        { role: "user", content: "Review the board." },
+        { role: "assistant", content: "Ready." },
+      ])
+    ).resolves.toEqual(chatResponse);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/users/me/board/chat",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          question: "Move card one.",
+          history: [
+            { role: "user", content: "Review the board." },
+            { role: "assistant", content: "Ready." },
+          ],
+        }),
+      })
+    );
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        response({
+          ...chatResponse,
+          board: {
+            columns: [],
+            cards: {
+              orphan: { id: "orphan", title: "Orphan", details: "" },
+            },
+          },
+        })
+      )
+    );
+    await expect(chatWithBoard("Hello.", [])).rejects.toThrow(
+      "invalid chat response"
     );
   });
 
@@ -136,5 +191,40 @@ describe("board loading state", () => {
 
     await saveColumnRename("col-backlog", "Queued");
     expect(getBoardSnapshot().error).toBe("Update rejected.");
+  });
+
+  it("replaces the board with a successful AI response and surfaces failures", async () => {
+    const changedBoard = structuredClone(initialData);
+    changedBoard.columns[0].cardIds = ["card-2", "card-1"];
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(response(initialData))
+        .mockResolvedValueOnce(
+          response({
+            model: "openai/gpt-oss-120b",
+            reply: "Moved the card.",
+            board: changedBoard,
+            changed: true,
+          })
+        )
+        .mockResolvedValueOnce(
+          response({ detail: "AI service unavailable." }, 503)
+        )
+    );
+
+    await loadBoard();
+    await expect(sendBoardChat("Move the card.", [])).resolves.toMatchObject({
+      reply: "Moved the card.",
+      changed: true,
+    });
+    expect(getBoardSnapshot().board).toEqual(changedBoard);
+
+    await expect(sendBoardChat("Another request.", [])).rejects.toThrow(
+      "AI service unavailable."
+    );
+    expect(getBoardSnapshot().error).toBeNull();
+    expect(getBoardSnapshot().board).toEqual(changedBoard);
   });
 });

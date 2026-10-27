@@ -1,10 +1,11 @@
+from concurrent.futures import ThreadPoolExecutor
 import sqlite3
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
-from backend.app.database import connect_database, initialize_database
+from backend.app.database import create_project, connect_database, initialize_database
 
 BOARD_URL = "/api/users/user/board"
 
@@ -18,9 +19,16 @@ def test_database_bootstrap_creates_schema_and_seed(
     with connect_database(database_path) as connection:
         assert connection.execute("PRAGMA foreign_keys").fetchone()[0] == 1
         assert connection.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 1
+        assert connection.execute("SELECT COUNT(*) FROM workspaces").fetchone()[0] == 1
+        assert connection.execute("SELECT COUNT(*) FROM projects").fetchone()[0] == 1
         assert connection.execute("SELECT COUNT(*) FROM boards").fetchone()[0] == 1
         assert connection.execute("SELECT COUNT(*) FROM columns").fetchone()[0] == 5
         assert connection.execute("SELECT COUNT(*) FROM cards").fetchone()[0] == 8
+
+    initialize_database(database_path)
+    with connect_database(database_path) as connection:
+        assert connection.execute("SELECT COUNT(*) FROM workspaces").fetchone()[0] == 1
+        assert connection.execute("SELECT COUNT(*) FROM projects").fetchone()[0] == 1
 
 
 def test_database_bootstrap_is_idempotent(database_path: Path) -> None:
@@ -32,6 +40,39 @@ def test_database_bootstrap_is_idempotent(database_path: Path) -> None:
         assert connection.execute("SELECT COUNT(*) FROM boards").fetchone()[0] == 1
         assert connection.execute("SELECT COUNT(*) FROM columns").fetchone()[0] == 5
         assert connection.execute("SELECT COUNT(*) FROM cards").fetchone()[0] == 8
+
+
+def test_database_bootstrap_seeds_only_empty_personal_boards(
+    database_path: Path,
+) -> None:
+    initialize_database(database_path)
+    with connect_database(database_path) as connection:
+        connection.execute(
+            "DELETE FROM cards WHERE column_id IN "
+            "(SELECT id FROM columns WHERE board_id = 'board-user')"
+        )
+
+    initialize_database(database_path)
+    with connect_database(database_path) as connection:
+        assert connection.execute(
+            "SELECT COUNT(*) FROM cards JOIN columns ON columns.id = cards.column_id "
+            "WHERE columns.board_id = 'board-user'"
+        ).fetchone()[0] == 8
+
+
+def test_database_connection_can_be_used_by_fastapi_worker_thread(
+    database_path: Path,
+) -> None:
+    initialize_database(database_path)
+    connection = connect_database(database_path)
+    try:
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            user_count = executor.submit(
+                lambda: connection.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+            ).result()
+        assert user_count == 1
+    finally:
+        connection.close()
 
 
 def test_board_read_matches_frontend_contract(client: TestClient) -> None:
@@ -46,11 +87,16 @@ def test_board_read_matches_frontend_contract(client: TestClient) -> None:
         "col-done",
     ]
     assert board["columns"][0]["cardIds"] == ["card-1", "card-2"]
-    assert board["cards"]["card-1"] == {
+    assert {
+        key: board["cards"]["card-1"][key]
+        for key in ("id", "title", "details")
+    } == {
         "id": "card-1",
         "title": "Align roadmap themes",
         "details": "Draft quarterly themes with impact statements and metrics.",
     }
+    assert board["cards"]["card-1"]["priority"] == "medium"
+    assert board["cards"]["card-1"]["status"] == "backlog"
 
 
 def test_missing_user_board_returns_not_found(client: TestClient) -> None:
@@ -88,11 +134,15 @@ def test_create_card_appends_to_column(client: TestClient) -> None:
     assert response.status_code == 201
     board = response.json()
     new_card_id = board["columns"][0]["cardIds"][-1]
-    assert board["cards"][new_card_id] == {
+    assert {
+        key: board["cards"][new_card_id][key]
+        for key in ("id", "title", "details")
+    } == {
         "id": new_card_id,
         "title": "New task",
         "details": "Task details",
     }
+    assert board["cards"][new_card_id]["priority"] == "medium"
     assert client.get(BOARD_URL).json() == board
 
 
@@ -133,7 +183,10 @@ def test_update_card_persists_title_and_details(client: TestClient) -> None:
     )
 
     assert response.status_code == 200
-    assert response.json()["cards"]["card-1"] == {
+    assert {
+        key: response.json()["cards"]["card-1"][key]
+        for key in ("id", "title", "details")
+    } == {
         "id": "card-1",
         "title": "Updated roadmap",
         "details": "Updated details.",
@@ -207,20 +260,26 @@ def test_move_card_rejects_unknown_card_or_column(client: TestClient) -> None:
     assert unknown_column.status_code == 404
 
 
-def test_database_enforces_one_board_per_user_and_foreign_keys(
+def test_database_allows_multiple_project_boards_and_enforces_foreign_keys(
     database_path: Path,
 ) -> None:
     initialize_database(database_path)
 
     with connect_database(database_path) as connection:
+        project_id = create_project(
+            connection,
+            "personal-user",
+            "user",
+            "Second project",
+        )
+        connection.execute(
+            "INSERT INTO boards (id, user_id, project_id, title) "
+            "VALUES (?, ?, ?, ?)",
+            ("another-board", "user", project_id, "Second board"),
+        )
         with pytest.raises(sqlite3.IntegrityError):
             connection.execute(
-                "INSERT INTO boards (id, user_id, title) VALUES (?, ?, ?)",
-                ("another-board", "user", "Second board"),
-            )
-        with pytest.raises(sqlite3.IntegrityError):
-            connection.execute(
-                "INSERT INTO boards (id, user_id, title) "
-                "VALUES (?, ?, ?)",
-                ("orphan-board", "missing-user", "Orphan"),
+                "INSERT INTO boards (id, user_id, project_id, title) "
+                "VALUES (?, ?, ?, ?)",
+                ("orphan-board", "missing-user", "missing-project", "Orphan"),
             )

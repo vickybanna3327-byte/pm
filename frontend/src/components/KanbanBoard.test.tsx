@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { KanbanBoard } from "@/components/KanbanBoard";
+import type { AuthUser } from "@/lib/authApi";
 import * as boardApi from "@/lib/boardApi";
 import { initialData } from "@/lib/kanban";
 
@@ -12,9 +13,15 @@ const apiMocks = vi.hoisted(() => ({
   deleteCard: vi.fn(),
   updateCard: vi.fn(),
   moveCard: vi.fn(),
+  chatWithBoard: vi.fn(),
+  setActiveProjectId: vi.fn(),
+  changePassword: vi.fn(),
 }));
 
 vi.mock("@/lib/boardApi", () => apiMocks);
+vi.mock("@/lib/authApi", () => ({
+  changePassword: apiMocks.changePassword,
+}));
 
 vi.mock("@dnd-kit/core", () => ({
   DndContext: ({
@@ -88,7 +95,15 @@ vi.mock("@dnd-kit/utilities", () => ({
 
 const getFirstColumn = async () =>
   (await screen.findAllByTestId(/column-/i))[0];
-const renderBoard = () => render(<KanbanBoard onLogout={() => {}} />);
+const testUser: AuthUser = {
+  id: "test-user",
+  username: "testuser",
+  email: "test@example.com",
+  full_name: "Test User",
+  role: "member",
+};
+const renderBoard = () =>
+  render(<KanbanBoard onLogout={() => {}} currentUser={testUser} />);
 
 describe("KanbanBoard", () => {
   beforeEach(() => {
@@ -99,6 +114,13 @@ describe("KanbanBoard", () => {
     apiMocks.deleteCard.mockResolvedValue(structuredClone(initialData));
     apiMocks.updateCard.mockResolvedValue(structuredClone(initialData));
     apiMocks.moveCard.mockResolvedValue(structuredClone(initialData));
+    apiMocks.chatWithBoard.mockResolvedValue({
+      model: "openai/gpt-oss-120b",
+      reply: "There are eight cards.",
+      board: structuredClone(initialData),
+      changed: false,
+    });
+    apiMocks.changePassword.mockResolvedValue({ message: "Password updated." });
   });
 
   it("loads and renders five columns", async () => {
@@ -224,6 +246,102 @@ describe("KanbanBoard", () => {
         "Updated roadmap",
         "Updated details"
       )
+    );
+  });
+
+  it("sends chat history and applies the returned board", async () => {
+    const updatedBoard = structuredClone(initialData);
+    updatedBoard.columns[0].cardIds = ["card-2", "card-1"];
+    apiMocks.chatWithBoard
+      .mockResolvedValueOnce({
+        model: "openai/gpt-oss-120b",
+        reply: "There are eight cards.",
+        board: structuredClone(initialData),
+        changed: false,
+      })
+      .mockResolvedValueOnce({
+        model: "openai/gpt-oss-120b",
+        reply: "Moved the roadmap card.",
+        board: updatedBoard,
+        changed: true,
+      });
+
+    renderBoard();
+    await screen.findByTestId("card-card-1");
+    const message = screen.getByLabelText("Message the board assistant");
+    await userEvent.type(message, "How many cards?");
+    await userEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    expect(await screen.findByText("There are eight cards.")).toBeVisible();
+    await userEvent.clear(message);
+    await userEvent.type(message, "Move the roadmap card.");
+    await userEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    expect(await screen.findByText("Moved the roadmap card.")).toBeVisible();
+    expect(
+      within(screen.getByTestId("column-col-backlog")).getAllByTestId(
+        /^card-card-/
+      )[0]
+    ).toHaveAttribute("data-testid", "card-card-2");
+    await waitFor(() =>
+      expect(apiMocks.chatWithBoard).toHaveBeenLastCalledWith(
+        "Move the roadmap card.",
+        [
+          { role: "user", content: "How many cards?" },
+          { role: "assistant", content: "There are eight cards." },
+        ]
+      )
+    );
+    expect(
+      within(screen.getByRole("log", { name: "Conversation" })).getByText(
+        "How many cards?"
+      )
+    ).toBeVisible();
+  });
+
+  it("shows chat errors without clearing the draft", async () => {
+    apiMocks.chatWithBoard.mockRejectedValueOnce(
+      new Error("OpenRouter is not configured.")
+    );
+    renderBoard();
+    await screen.findByTestId("card-card-1");
+    const message = screen.getByLabelText("Message the board assistant");
+    await userEvent.type(message, "Please review this board.");
+    await userEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "OpenRouter is not configured."
+    );
+    expect(message).toHaveValue("Please review this board.");
+  });
+
+  it("shows account details and changes the password", async () => {
+    renderBoard();
+    await screen.findByTestId("card-card-1");
+    await userEvent.click(screen.getByRole("button", { name: "Test User" }));
+    expect(screen.getByText("test@example.com")).toBeVisible();
+    await userEvent.type(
+      screen.getByLabelText("Current password"),
+      "OldSecurePassword123!"
+    );
+    await userEvent.type(
+      screen.getByLabelText("New password"),
+      "NewSecurePassword123!"
+    );
+    await userEvent.type(
+      screen.getByLabelText("Confirm new password"),
+      "NewSecurePassword123!"
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Update password" }));
+
+    await waitFor(() =>
+      expect(apiMocks.changePassword).toHaveBeenCalledWith(
+        "OldSecurePassword123!",
+        "NewSecurePassword123!"
+      )
+    );
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Password updated."
     );
   });
 

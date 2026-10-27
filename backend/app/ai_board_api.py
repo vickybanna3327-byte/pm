@@ -1,6 +1,5 @@
 import json
 import os
-import sqlite3
 from collections.abc import AsyncIterator
 from typing import Annotated, Literal
 from uuid import uuid4
@@ -8,12 +7,19 @@ from uuid import uuid4
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
+from backend.app.auth_api import AuthenticatedUser, OriginCheck
+from backend.app.board_api import BoardOwner
 from backend.app.board_api import (
     get_board_row,
+    get_project_board_row,
     serialize_board,
     set_card_order,
 )
-from backend.app.database import connect_database
+from backend.app.database import (
+    DatabaseConnection as DatabaseSession,
+    connect_database,
+    database_timestamp,
+)
 from backend.app.openrouter_api import (
     OPENROUTER_MODEL,
     OpenRouterError,
@@ -21,11 +27,12 @@ from backend.app.openrouter_api import (
 )
 
 router = APIRouter(prefix="/api/users/{user_id}/board", tags=["ai"])
+project_router = APIRouter(prefix="/api/projects/{project_id}/board", tags=["ai"])
 
 
 async def ai_database_connection(
     request: Request,
-) -> AsyncIterator[sqlite3.Connection]:
+) -> AsyncIterator[DatabaseSession]:
     connection = connect_database(request.app.state.database_path)
     try:
         yield connection
@@ -34,7 +41,7 @@ async def ai_database_connection(
 
 
 DatabaseConnection = Annotated[
-    sqlite3.Connection, Depends(ai_database_connection)
+    DatabaseSession, Depends(ai_database_connection)
 ]
 
 
@@ -173,7 +180,7 @@ def parse_model_reply(content: str) -> ModelReply:
 
 
 def _card_column(
-    connection: sqlite3.Connection, board_id: str, card_id: str
+    connection: DatabaseSession, board_id: str, card_id: str
 ) -> str:
     row = connection.execute(
         """
@@ -190,7 +197,7 @@ def _card_column(
 
 
 def _require_column(
-    connection: sqlite3.Connection, board_id: str, column_id: str
+    connection: DatabaseSession, board_id: str, column_id: str
 ) -> None:
     row = connection.execute(
         "SELECT 1 FROM columns WHERE board_id = ? AND id = ?",
@@ -200,7 +207,7 @@ def _require_column(
         raise InvalidMutation(f"Column {column_id} is not on this board.")
 
 
-def _ordered_card_ids(connection: sqlite3.Connection, column_id: str) -> list[str]:
+def _ordered_card_ids(connection: DatabaseSession, column_id: str) -> list[str]:
     return [
         row["id"]
         for row in connection.execute(
@@ -211,9 +218,10 @@ def _ordered_card_ids(connection: sqlite3.Connection, column_id: str) -> list[st
 
 
 def apply_mutations(
-    connection: sqlite3.Connection,
+    connection: DatabaseSession,
     board_id: str,
     actions: list[BoardMutation],
+    actor_id: str,
 ) -> None:
     with connection:
         for action in actions:
@@ -229,21 +237,35 @@ def apply_mutations(
                     "SELECT COUNT(*) FROM cards WHERE column_id = ?",
                     (action.column_id,),
                 ).fetchone()[0]
+                status_key = connection.execute(
+                    "SELECT status_key FROM columns WHERE id = ?",
+                    (action.column_id,),
+                ).fetchone()["status_key"]
+                created_at = database_timestamp()
                 connection.execute(
-                    "INSERT INTO cards (id, column_id, title, details, position) "
-                    "VALUES (?, ?, ?, ?, ?)",
+                    """
+                    INSERT INTO cards
+                        (id, column_id, title, details, position, reporter_id,
+                            completed_at, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
                     (
                         f"card-{uuid4().hex}",
                         action.column_id,
                         action.title,
                         action.details,
                         position,
+                        actor_id,
+                        created_at if status_key == "completed" else None,
+                        created_at,
+                        created_at,
                     ),
                 )
             elif isinstance(action, UpdateCard):
                 _card_column(connection, board_id, action.card_id)
                 connection.execute(
-                    "UPDATE cards SET title = ?, details = ? WHERE id = ?",
+                    "UPDATE cards SET title = ?, details = ?, "
+                    "updated_at = CURRENT_TIMESTAMP WHERE id = ?",
                     (action.title, action.details, action.card_id),
                 )
             elif isinstance(action, MoveCard):
@@ -276,13 +298,53 @@ def apply_mutations(
                     )
                     set_card_order(connection, source_column_id, source_ids)
                 set_card_order(connection, action.column_id, target_ids)
+                connection.execute(
+                    """
+                    UPDATE cards
+                    SET updated_at = CURRENT_TIMESTAMP,
+                        completed_at = CASE
+                            WHEN (SELECT status_key FROM columns WHERE id = ?) = 'completed'
+                                THEN COALESCE(completed_at, CURRENT_TIMESTAMP)
+                            ELSE NULL
+                        END
+                    WHERE id = ?
+                    """,
+                    (action.column_id, action.card_id),
+                )
 
 
 @router.post("/chat")
 async def chat_with_board(
-    user_id: str,
+    user_id: BoardOwner,
     request: BoardChatRequest,
     connection: DatabaseConnection,
+    _: OriginCheck,
+) -> dict[str, object]:
+    board_row = get_board_row(connection, user_id)
+    return await execute_board_chat(
+        board_row["id"], user_id, request, connection
+    )
+
+
+@project_router.post("/chat")
+async def chat_with_project_board(
+    project_id: str,
+    request: BoardChatRequest,
+    user: AuthenticatedUser,
+    connection: DatabaseConnection,
+    _: OriginCheck,
+) -> dict[str, object]:
+    board_row = get_project_board_row(connection, project_id, user, write=True)
+    return await execute_board_chat(
+        board_row["id"], user["id"], request, connection
+    )
+
+
+async def execute_board_chat(
+    board_id: str,
+    actor_id: str,
+    request: BoardChatRequest,
+    connection: DatabaseSession,
 ) -> dict[str, object]:
     api_key = os.getenv("OPENROUTER_API_KEY", "").strip()
     if not api_key:
@@ -291,8 +353,7 @@ async def chat_with_board(
             detail="OPENROUTER_API_KEY is not configured.",
         )
 
-    board_row = get_board_row(connection, user_id)
-    board = serialize_board(connection, board_row["id"])
+    board = serialize_board(connection, board_id)
     try:
         content = await request_chat_completion(
             api_key,
@@ -304,14 +365,14 @@ async def chat_with_board(
         raise HTTPException(status_code=502, detail=str(error)) from error
 
     try:
-        apply_mutations(connection, board_row["id"], model_reply.actions)
+        apply_mutations(connection, board_id, model_reply.actions, actor_id)
     except InvalidMutation as error:
         raise HTTPException(
             status_code=502,
             detail="OpenRouter returned an invalid board mutation.",
         ) from error
 
-    updated_board = serialize_board(connection, board_row["id"])
+    updated_board = serialize_board(connection, board_id)
     return {
         "model": OPENROUTER_MODEL,
         "reply": model_reply.reply,

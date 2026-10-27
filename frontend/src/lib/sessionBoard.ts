@@ -1,5 +1,6 @@
 import type { BoardData } from "@/lib/kanban";
 import * as boardApi from "@/lib/boardApi";
+import type { BoardChatResponse, ChatMessage } from "@/lib/boardApi";
 
 export type BoardState = {
   board: BoardData | null;
@@ -34,7 +35,8 @@ export const subscribeToBoard = (onChange: () => void) => {
 export const getBoardSnapshot = () => state;
 export const getServerBoardSnapshot = () => EMPTY_STATE;
 
-export const loadBoard = async () => {
+export const loadBoard = async (projectId: string | null = null) => {
+  boardApi.setActiveProjectId(projectId);
   setState({ board: null, status: "loading", error: null, saving: false });
   try {
     const board = await boardApi.fetchBoard();
@@ -88,3 +90,29 @@ export const saveCardMove = (
   columnId: string,
   position?: number
 ) => saveMutation(() => boardApi.moveCard(cardId, columnId, position));
+
+export const sendBoardChat = (
+  question: string,
+  history: ChatMessage[]
+): Promise<BoardChatResponse> => {
+  const chatRequest = mutationQueue.then(async () => {
+    try {
+      const result = await boardApi.chatWithBoard(question, history);
+      setState({
+        board: result.board,
+        status: "ready",
+        error: null,
+        saving: false,
+      });
+      return result;
+    } catch (error) {
+      setState({ ...state, saving: false });
+      throw error;
+    }
+  });
+  mutationQueue = chatRequest.then(
+    () => undefined,
+    () => undefined
+  );
+  return chatRequest;
+};

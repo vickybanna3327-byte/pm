@@ -37,7 +37,7 @@ export const KanbanCard = ({ card, onDelete, onUpdate }: KanbanCardProps) => {
       ref={setNodeRef}
       style={style}
       className={clsx(
-        "rounded-2xl border border-transparent bg-white px-4 py-4 shadow-[0_12px_24px_rgba(3,33,71,0.08)]",
+        "min-w-0 rounded-2xl border border-transparent bg-white px-4 py-4 shadow-[0_12px_24px_rgba(3,33,71,0.08)]",
         "transition-all duration-150",
         isDragging && "opacity-60 shadow-[0_18px_32px_rgba(3,33,71,0.16)]"
       )}
@@ -83,16 +83,16 @@ export const KanbanCard = ({ card, onDelete, onUpdate }: KanbanCardProps) => {
           </div>
         </form>
       ) : (
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h4 className="font-display text-base font-semibold text-[var(--navy-dark)]">
+        <>
+          <div className="min-w-0">
+            <h4 className="break-words font-display text-base font-semibold text-[var(--navy-dark)]">
               {card.title}
             </h4>
-            <p className="mt-2 text-sm leading-6 text-[var(--gray-text)]">
+            <p className="mt-2 break-words text-sm leading-6 text-[var(--gray-text)]">
               {card.details}
             </p>
           </div>
-          <div className="flex shrink-0 items-center gap-1">
+          <div className="mt-3 flex min-w-0 justify-end gap-1 border-t border-[var(--stroke)] pt-2">
             <button
               type="button"
               onPointerDown={(event) => event.stopPropagation()}
@@ -101,7 +101,7 @@ export const KanbanCard = ({ card, onDelete, onUpdate }: KanbanCardProps) => {
                 setDetails(card.details);
                 setEditing(true);
               }}
-              className="rounded-full border border-transparent px-2 py-1 text-xs font-semibold text-[var(--primary-blue)] transition hover:border-[var(--stroke)]"
+              className="whitespace-nowrap rounded-full border border-transparent px-2 py-1 text-xs font-semibold text-[var(--primary-blue)] transition hover:border-[var(--stroke)]"
               aria-label={`Edit ${card.title}`}
             >
               Edit
@@ -110,13 +110,13 @@ export const KanbanCard = ({ card, onDelete, onUpdate }: KanbanCardProps) => {
               type="button"
               onPointerDown={(event) => event.stopPropagation()}
               onClick={() => onDelete(card.id)}
-              className="rounded-full border border-transparent px-2 py-1 text-xs font-semibold text-[var(--gray-text)] transition hover:border-[var(--stroke)] hover:text-[var(--navy-dark)]"
+              className="whitespace-nowrap rounded-full border border-transparent px-2 py-1 text-xs font-semibold text-[var(--gray-text)] transition hover:border-[var(--stroke)] hover:text-[var(--navy-dark)]"
               aria-label={`Delete ${card.title}`}
             >
               Remove
             </button>
           </div>
-        </div>
+        </>
       )}
     </article>
   );

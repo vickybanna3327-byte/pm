@@ -8,3 +8,6 @@
 **/.pytest_cache
 **/.mypy_cache
 frontend/out
+.env
+.env.*
+data/

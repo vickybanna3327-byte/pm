@@ -7,7 +7,7 @@ def test_root_serves_exported_frontend(client: TestClient) -> None:
     response = client.get("/")
     assert response.status_code == 200
     assert "Kanban Studio" in response.text
-    assert "Single Board Kanban" in response.text
+    assert "Checking your session..." in response.text
 
 
 def test_health_route(client: TestClient) -> None:

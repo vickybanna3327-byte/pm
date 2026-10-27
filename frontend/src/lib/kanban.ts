@@ -2,6 +2,16 @@ export type Card = {
   id: string;
   title: string;
   details: string;
+  priority?: "low" | "medium" | "high";
+  assignee_id?: string | null;
+  reporter_id?: string | null;
+  start_date?: string | null;
+  due_date?: string | null;
+  completed_at?: string | null;
+  labels?: string[];
+  created_at?: string;
+  updated_at?: string;
+  status?: "backlog" | "todo" | "in_progress" | "in_review" | "completed";
 };
 
 export type Column = {

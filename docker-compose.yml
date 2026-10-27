@@ -1,0 +1,28 @@
+services:
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      PM_DATABASE_PATH: /app/data/pm.db
+      FRONTEND_URL: ${FRONTEND_URL:-http://127.0.0.1:8000}
+      AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-false}
+      SMTP_HOST: mailpit
+      SMTP_PORT: 1025
+      SMTP_USE_TLS: "false"
+      EMAIL_FROM_ADDRESS: ${EMAIL_FROM_ADDRESS:-Kanban Studio <no-reply@pm.local>}
+    volumes:
+      - pm-data:/app/data
+    depends_on:
+      - mailpit
+
+  mailpit:
+    image: axllent/mailpit:latest
+    ports:
+      - "8025:8025"
+      - "1025:1025"
+
+volumes:
+  pm-data:

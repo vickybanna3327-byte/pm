@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: pm-app
+    runtime: docker
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: AUTH_COOKIE_SECURE
+        value: "true"
+      - key: OPENROUTER_API_KEY
+        sync: false

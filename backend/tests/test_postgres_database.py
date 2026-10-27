@@ -175,6 +175,15 @@ def test_postgres_bootstraps_legacy_users_and_supports_project_creation(
             assert board.status_code == 200
             assert len(board.json()["columns"]) == 5
             assert len(board.json()["cards"]) == 8
+            card_id = board.json()["columns"][0]["cardIds"][0]
+            target_column_id = board.json()["columns"][3]["id"]
+            moved = client.post(
+                f"/api/projects/{project.json()['id']}/board/cards/{card_id}/move",
+                json={"column_id": target_column_id},
+            )
+            assert moved.status_code == 200
+            assert moved.json()["cards"][card_id]["status"] == "in_review"
+            assert card_id in moved.json()["columns"][3]["cardIds"]
     finally:
         connection = connect_database(database_url)
         with connection:

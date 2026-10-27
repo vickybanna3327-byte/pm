@@ -235,7 +235,8 @@ def set_card_order(
     connection: DatabaseSession, column_id: str, ordered_ids: list[str]
 ) -> None:
     connection.execute(
-        "UPDATE cards SET position = position + 1000000000 WHERE column_id = ?",
+        "UPDATE cards SET position = position + 1000000000 "
+        "WHERE column_id = ? AND position < 1000000000",
         (column_id,),
     )
     connection.executemany(

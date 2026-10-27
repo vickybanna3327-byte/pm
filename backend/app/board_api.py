@@ -318,8 +318,9 @@ def create_card_on_board(
     card_id = f"card-{uuid4().hex}"
     with connection:
         position = connection.execute(
-            "SELECT COUNT(*) FROM cards WHERE column_id = ?", (column_id,)
-        ).fetchone()[0]
+            "SELECT COUNT(*) AS card_count FROM cards WHERE column_id = ?",
+            (column_id,),
+        ).fetchone()["card_count"]
         connection.execute(
             """
             INSERT INTO cards

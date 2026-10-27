@@ -234,9 +234,9 @@ def apply_mutations(
             elif isinstance(action, CreateCard):
                 _require_column(connection, board_id, action.column_id)
                 position = connection.execute(
-                    "SELECT COUNT(*) FROM cards WHERE column_id = ?",
+                    "SELECT COUNT(*) AS card_count FROM cards WHERE column_id = ?",
                     (action.column_id,),
-                ).fetchone()[0]
+                ).fetchone()["card_count"]
                 status_key = connection.execute(
                     "SELECT status_key FROM columns WHERE id = ?",
                     (action.column_id,),

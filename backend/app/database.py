@@ -613,32 +613,30 @@ def initialize_postgres_database(database_url: str) -> None:
         )
         users = connection.execute("SELECT id FROM users").fetchall()
         for user in users:
-            create_personal_workspace(connection, user["id"])
+            workspace_id = create_personal_workspace(connection, user["id"])
+            project = connection.execute(
+                "SELECT id FROM projects WHERE workspace_id = ? "
+                "AND status != 'archived' ORDER BY created_at LIMIT 1",
+                (workspace_id,),
+            ).fetchone()
+            if project is None:
+                project_id = create_project(
+                    connection,
+                    workspace_id,
+                    user["id"],
+                    "Kanban Studio",
+                )
+            else:
+                project_id = project["id"]
 
-        workspace_id = "personal-user"
-        default_project = connection.execute(
-            "SELECT id FROM projects WHERE workspace_id = ? "
-            "ORDER BY created_at LIMIT 1",
-            (workspace_id,),
-        ).fetchone()
-        if default_project is None:
-            project_id = create_project(
-                connection,
-                workspace_id,
-                "user",
-                "Kanban Studio",
-            )
-        else:
-            project_id = default_project["id"]
-
-        board = connection.execute(
-            "SELECT id FROM boards WHERE project_id = ?", (project_id,)
-        ).fetchone()
-        if board is None:
-            board_id = create_board(connection, "user", project_id)
-        else:
-            board_id = board["id"]
-        seed_default_board_cards(connection, board_id, "user")
+            board = connection.execute(
+                "SELECT id FROM boards WHERE project_id = ?", (project_id,)
+            ).fetchone()
+            if board is None:
+                board_id = create_board(connection, user["id"], project_id)
+            else:
+                board_id = board["id"]
+            seed_default_board_cards(connection, board_id, user["id"])
 
 
 def initialize_database(database_path: Path | str) -> None:

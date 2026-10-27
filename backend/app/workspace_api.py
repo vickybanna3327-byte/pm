@@ -129,10 +129,11 @@ def serialize_project(
     ).fetchone()
     member_count = connection.execute(
         """
-        SELECT COUNT(*) FROM project_members WHERE project_id = ?
+        SELECT COUNT(*) AS member_count
+        FROM project_members WHERE project_id = ?
         """,
         (project["id"],),
-    ).fetchone()[0]
+    ).fetchone()["member_count"]
     return {
         "id": project["id"],
         "workspace_id": project["workspace_id"],
@@ -168,7 +169,7 @@ def list_workspaces(
         LEFT JOIN projects ON projects.workspace_id = workspaces.id
             AND projects.status != 'archived'
         WHERE workspace_members.user_id = ?
-        GROUP BY workspaces.id
+        GROUP BY workspaces.id, workspace_members.role
         ORDER BY workspaces.kind, workspaces.created_at
         """,
         (user["id"],),
